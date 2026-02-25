@@ -157,23 +157,72 @@ public class CMasked
     }
 
     // ================================================================
-    //  COMMON BOOLEAN OPERATIONS
+    //  ALL 16 BOOLEAN OPERATIONS (2-input truth table order)
     // ================================================================
 
+    /// <summary>FALSE: always false regardless of inputs. (0000)</summary>
+    public static CMasked False(CSpace space, (CValue, CValue) a, (CValue, CValue) b) =>
+        BoolOp(space, (x, y) => false, a, b);
+
+    /// <summary>AND: true only when both A and B are true. (0001)</summary>
     public static CMasked And(CSpace space, (CValue, CValue) a, (CValue, CValue) b) =>
         BoolOp(space, (x, y) => x && y, a, b);
 
-    public static CMasked Or(CSpace space, (CValue, CValue) a, (CValue, CValue) b) =>
-        BoolOp(space, (x, y) => x || y, a, b);
+    /// <summary>AND_NOT: true only when A is true and B is false. (0010)</summary>
+    public static CMasked AndNot(CSpace space, (CValue, CValue) a, (CValue, CValue) b) =>
+        BoolOp(space, (x, y) => x && !y, a, b);
 
+    /// <summary>A: projection — result equals A, ignores B. (0011)</summary>
+    public static CMasked ProjectA(CSpace space, (CValue, CValue) a, (CValue, CValue) b) =>
+        BoolOp(space, (x, y) => x, a, b);
+
+    /// <summary>NOT_AND: true only when A is false and B is true. (0100)</summary>
+    public static CMasked NotAnd(CSpace space, (CValue, CValue) a, (CValue, CValue) b) =>
+        BoolOp(space, (x, y) => !x && y, a, b);
+
+    /// <summary>B: projection — result equals B, ignores A. (0101)</summary>
+    public static CMasked ProjectB(CSpace space, (CValue, CValue) a, (CValue, CValue) b) =>
+        BoolOp(space, (x, y) => y, a, b);
+
+    /// <summary>XOR: true when exactly one of A or B is true. (0110)</summary>
     public static CMasked Xor(CSpace space, (CValue, CValue) a, (CValue, CValue) b) =>
         BoolOp(space, (x, y) => x ^ y, a, b);
 
+    /// <summary>OR: true when at least one of A or B is true. (0111)</summary>
+    public static CMasked Or(CSpace space, (CValue, CValue) a, (CValue, CValue) b) =>
+        BoolOp(space, (x, y) => x || y, a, b);
+
+    /// <summary>NOR: true only when both A and B are false. (1000)</summary>
+    public static CMasked Nor(CSpace space, (CValue, CValue) a, (CValue, CValue) b) =>
+        BoolOp(space, (x, y) => !(x || y), a, b);
+
+    /// <summary>XNOR: true when A and B have the same value. (1001)</summary>
+    public static CMasked Xnor(CSpace space, (CValue, CValue) a, (CValue, CValue) b) =>
+        BoolOp(space, (x, y) => !(x ^ y), a, b);
+
+    /// <summary>NOT_B: result is the inverse of B, ignores A. (1010)</summary>
+    public static CMasked NotB(CSpace space, (CValue, CValue) a, (CValue, CValue) b) =>
+        BoolOp(space, (x, y) => !y, a, b);
+
+    /// <summary>A_OR_NOT_B: true when A is true or B is false. (1011)</summary>
+    public static CMasked AOrNotB(CSpace space, (CValue, CValue) a, (CValue, CValue) b) =>
+        BoolOp(space, (x, y) => x || !y, a, b);
+
+    /// <summary>NOT_A: result is the inverse of A, ignores B. (1100)</summary>
+    public static CMasked NotA(CSpace space, (CValue, CValue) a, (CValue, CValue) b) =>
+        BoolOp(space, (x, y) => !x, a, b);
+
+    /// <summary>NOT_A_OR_B: true when A is false or B is true. (1101)</summary>
+    public static CMasked NotAOrB(CSpace space, (CValue, CValue) a, (CValue, CValue) b) =>
+        BoolOp(space, (x, y) => !x || y, a, b);
+
+    /// <summary>NAND: true unless both A and B are true. (1110)</summary>
     public static CMasked Nand(CSpace space, (CValue, CValue) a, (CValue, CValue) b) =>
         BoolOp(space, (x, y) => !(x && y), a, b);
 
-    public static CMasked Nor(CSpace space, (CValue, CValue) a, (CValue, CValue) b) =>
-        BoolOp(space, (x, y) => !(x || y), a, b);
+    /// <summary>TRUE: always true regardless of inputs. (1111)</summary>
+    public static CMasked True(CSpace space, (CValue, CValue) a, (CValue, CValue) b) =>
+        BoolOp(space, (x, y) => true, a, b);
 
     public override string ToString()
     {
