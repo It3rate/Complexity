@@ -1,3 +1,6 @@
+using System.Diagnostics.Metrics;
+using static System.Runtime.InteropServices.JavaScript.JSType;
+
 namespace Complexity.Core;
 
 /// <summary>
@@ -228,5 +231,89 @@ public class CMasked
     {
         if (IsEmpty) return "∅";
         return $"{Count} region(s) in {Space.Name}";
+    }
+}
+
+
+
+
+
+// Continuous Booleans
+
+// Each of your 16 Boolean operations sits exactly at one of the corners
+// of a tesseract or similar shape(16 points).
+// The coordinates of each corner are defined by the 4 bits of its truth table.
+// False sits at coordinate(0, 0, 0, 0).
+// AND sits at coordinate(0, 0, 0, 1).
+// OR sits at coordinate(0, 1, 1, 1).
+// True sits at coordinate(1, 1, 1, 1).
+// To transition smoothly from one state to another,
+// you are simply drawing a line between two corners and walking across it.
+// You are no longer flipping a switch;
+// you are performing dimensional reduction on a conceptual space, 
+// bringing a 4D problem down to a slider between 0.0 and 1.0.
+// If you want to morph AND into OR, you interpolate their coordinates.
+// Halfway between them is a coordinate of(0, 0.5, 0.5, 1). 
+// This is a completely valid, continuous logic gate.
+// It acts like an AND gate when both inputs are strong, but if only one input is present, 
+// it offers a 50% "maybe" rather than a hard failure.
+
+public class ContinuousGate
+{
+    // The 4 coordinates defining the operation's position in logic space
+    public float W00 { get; }
+    public float W10 { get; }
+    public float W01 { get; }
+    public float W11 { get; }
+
+    public ContinuousGate(float w00, float w10, float w01, float w11)
+    {
+        W00 = w00;
+        W10 = w10;
+        W01 = w01;
+        W11 = w11;
+    }
+
+    // The universal evaluation function
+    public float Evaluate(float a, float b)
+    {
+        // Clamp inputs to ensure they remain within 0.0 to 1.0 bounds
+        a = Math.Clamp(a, 0f, 1f);
+        b = Math.Clamp(b, 0f, 1f);
+
+        // Multilinear interpolation
+        return W00 * (1 - a) * (1 - b) +
+               W10 * a * (1 - b) +
+               W01 * (1 - a) * b +
+               W11 * a * b;
+    }
+
+    // ================================================================
+    //  STATIC DEFINITIONS OF THE 16 CORNERS
+    // ================================================================
+
+    public static ContinuousGate False => new ContinuousGate(0, 0, 0, 0);
+    public static ContinuousGate And => new ContinuousGate(0, 0, 0, 1);
+    public static ContinuousGate Xor => new ContinuousGate(0, 1, 1, 0);
+    public static ContinuousGate Or => new ContinuousGate(0, 1, 1, 1);
+    public static ContinuousGate True => new ContinuousGate(1, 1, 1, 1);
+    // ... the rest follow the same bit pattern mapping
+
+    // ================================================================
+    //  THE TRANSITION ENGINE (Morphing Gates)
+    // ================================================================
+
+    /// <summary>
+    /// Interpolates between two logic gates by a factor of t (0.0 to 1.0).
+    /// </summary>
+    public static ContinuousGate Lerp(ContinuousGate gate1, ContinuousGate gate2, float t)
+    {
+        t = Math.Clamp(t, 0f, 1f);
+        return new ContinuousGate(
+            gate1.W00 + (gate2.W00 - gate1.W00) * t,
+            gate1.W10 + (gate2.W10 - gate1.W10) * t,
+            gate1.W01 + (gate2.W01 - gate1.W01) * t,
+            gate1.W11 + (gate2.W11 - gate1.W11) * t
+        );
     }
 }
