@@ -25,6 +25,9 @@ public struct PRange
         get;
         private set;
     }
+    public float StartF => (float)Start;
+    public float EndF => (float)End;
+
     private readonly bool _hasValue;
     public double UnitValue
     {
@@ -36,8 +39,6 @@ public struct PRange
         get => IsAligned ? Start : End;
         set { if (IsAligned) { Start = value; } else { End = value; } }
     }
-    public float StartF => (float)Start;
-    public float EndF => (float)End;
     public float RenderStart => (float)(IsAligned ? Start : -Start);
     public float RenderEnd => (float)(IsAligned ? End : -End);
 
