@@ -1,4 +1,7 @@
+using System;
 using System.Diagnostics.Metrics;
+using System.Drawing;
+using System.IO;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Complexity.Core;
@@ -316,4 +319,127 @@ public class ContinuousGate
             gate1.W11 + (gate2.W11 - gate1.W11) * t
         );
     }
+}
+
+
+
+
+
+
+
+// this is probabilistic bools that combine to emulate multiplication, and ideally cover all ops in one swoop.
+// Essentially multiplying complex numbers on different axis is an 'OR', and probabilities allow building a truthSpace that covers both, AB, BA, and neither possiblities as a result.
+
+/* E.g.
+ If an AI is evaluating two competing perspectives—say, 
+ the probability of a door being a standard height (A = 80% confident) 
+ and the proportion estimate from an image (B = 60% confident)—it multiplies them to synthesize the space:
+
+var doorStandard = new ContinuousBool(0.80f);
+var imageEstimate = new ContinuousBool(0.60f);
+
+// Multiply segments to create the TruthSpace
+var logicSpace = doorStandard * imageEstimate; 
+
+// The space is automatically partitioned:
+// Q1 (Both right): 0.48
+// Q2 (Door standard right, image wrong): 0.32
+// Q3 (Image right, door standard wrong): 0.12
+// Q4 (Both wrong): 0.08
+
+// The AI can now query the space for specific tensions:
+float agreement = logicSpace.XNOR; // Q1 + Q4 = 0.56 (56% chance they align)
+float tension = logicSpace.XOR;    // Q2 + Q3 = 0.44 (44% chance they conflict)
+
+
+No Logic Branches: Notice there are no if/else statements anywhere in the Boolean operations.
+Everything is solved algebraically.The CPU just does a few fast floating-point multiplications and additions.
+
+Smooth Gradients: Because the outputs are continuous floats, you can feed these directly into your Resolvers or Validity properties in your Box interface.
+If logicSpace.XOR(tension) is high, the Box can push back mathematically on its parent nodes to reduce that tension over time.
+
+Information Preservation: logicSpace.A reconstructs the exact original value of A ($Q_1 + Q_2 = 0.48 + 0.32 = 0.80$).
+Merging the dimensions didn't destroy the 1D inputs; they are fully preserved inside the 2D area.
+
+*/
+
+
+
+
+/// <summary>
+/// Represents a 1D segment bounded between 0 and 1.
+/// This acts as a continuous probability or "confidence" level.
+/// </summary>
+public readonly struct ContinuousBool
+{
+    public float Value { get; }
+    public float NotValue => 1f - Value;
+
+    public ContinuousBool(float value)
+    {
+        // Ensure the value stays within the 0 to 1 bounds
+        Value = Math.Clamp(value, 0f, 1f);
+    }
+
+    // Synthesizing a higher-dimensional space:
+    // Multiplying two 1D segments creates a 2D TruthSpace container.
+    public static TruthSpace operator *(ContinuousBool a, ContinuousBool b)
+    {
+        return new TruthSpace(a, b);
+    }
+
+    public override string ToString() => $"{Value:P0}";
+}
+
+/// <summary>
+/// The 2D container synthesized by multiplying two ContinuousBools.
+/// It partitions the unit square into 4 continuous quadrants.
+/// </summary>
+public readonly struct TruthSpace
+{
+    // --- THE 4 FUNDAMENTAL QUADRANTS ---
+    // These will always sum to exactly 1.0 (100% of the possibility space)
+
+    public float Q1 { get; } // A and B (Both True)
+    public float Q2 { get; } // A and Not B (A True, B False)
+    public float Q3 { get; } // Not A and B (A False, B True)
+    public float Q4 { get; } // Not A and Not B (Both False)
+
+    public TruthSpace(ContinuousBool a, ContinuousBool b)
+    {
+        Q1 = a.Value * b.Value;
+        Q2 = a.Value * b.NotValue;
+        Q3 = a.NotValue * b.Value;
+        Q4 = a.NotValue * b.NotValue;
+    }
+
+    // --- THE 16 BOOLEAN OPERATORS ---
+    // Expressed as the sum of specific geometric areas.
+    // Instead of returning True/False, they return the continuous probability (0f to 1f) of that state.
+
+    // 0 Areas
+    public float False => 0f;                                  // 0000
+
+    // 1 Area (Intersections)
+    public float AND => Q1;                                  // 1000
+    public float A_And_Not_B => Q2;                                  // 0100
+    public float Not_A_And_B => Q3;                                  // 0010
+    public float NOR => Q4;                                  // 0001
+
+    // 2 Areas (1D Projections and Equivalencies)
+    public float A => Q1 + Q2;                             // 1100 (Recovers Segment A)
+    public float B => Q1 + Q3;                             // 1010 (Recovers Segment B)
+    public float Not_A => Q3 + Q4;                             // 0011
+    public float Not_B => Q2 + Q4;                             // 0101
+    public float XOR => Q2 + Q3;                             // 0110 (Tension / Disagreement)
+    public float XNOR => Q1 + Q4;                             // 1001 (Equivalence / Agreement)
+
+    // 3 Areas (Unions)
+    public float OR => Q1 + Q2 + Q3;                        // 1110
+    public float A_Or_Not_B => Q1 + Q2 + Q4;                        // 1101 (Implies B -> A)
+    public float Not_A_Or_B => Q1 + Q3 + Q4;                        // 1011 (Implies A -> B)
+    public float NAND => Q2 + Q3 + Q4;                        // 0111
+
+    // 4 Areas
+    public float True => Q1 + Q2 + Q3 + Q4;                   // 1111 (Always 1.0)
 }
