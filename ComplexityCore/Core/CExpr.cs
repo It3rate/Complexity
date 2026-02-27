@@ -1,32 +1,35 @@
 namespace Complexity.Core;
 
 /// <summary>
-/// An expression: left op right → result, evaluated within a complexity space.
-/// Extends CBox with operation semantics.
+/// A pure expression: Left op Right → result, within a number frame (CSpace).
 ///
-/// All values are tick-based (longs). Operations work on CValue (tick components).
+/// CExpr is a stateless transform — it takes values in and produces a value out.
+/// It carries no history, no resolvers, no validity tracking, and no mutable state.
+/// Those are simulation concerns and belong in DynamicExpr.
 ///
-/// Corresponds to the Expr interface from the outline, which extends Box:
-///   Left      → Left CBox
-///   Right     → Right CBox (optional for unary)
-///   Op        → OperationKind
-///   Repeats   → Repeats (for power-like repetition)
+/// Both operands live in the same space (Left.Space).
+/// The space's algebra table defines what multiplication means.
+/// For cross-space operations, project or embed into a shared frame first.
 ///
-/// Generalizes Transform: where Transform has Left + Right + OperationKind + Result,
-/// CExpr has the same plus resolvers, history, and validity tracking.
-/// Transform's lifecycle (Start/Tick/End) maps to DynamicExpr's step/resolve.
+/// Corresponds to the Expr concept from the outline:
+///   Left  → Left CValue
+///   Right → Right CValue (null for unary)
+///   Op    → OperationKind
+///   Repeats → repetition count (for AppendAll, MultiplyAll)
 /// </summary>
-public class CExpr : CBox
+public class CExpr
 {
-    public CBox Left { get; }
-    public CBox? Right { get; }
+    public CValue Left { get; }
+    public CValue? Right { get; }
     public OperationKind Op { get; set; }
     public int Repeats { get; set; } = 1;
 
+    /// <summary>The number frame this expression lives in (from the Left operand).</summary>
+    public CSpace Space => Left.Space;
+
     public bool IsUnary => Right == null;
 
-    public CExpr(CBox left, CBox? right, OperationKind op)
-        : base(left.Space)
+    public CExpr(CValue left, CValue? right, OperationKind op)
     {
         Left = left;
         Right = right;
@@ -35,34 +38,35 @@ public class CExpr : CBox
 
     /// <summary>
     /// Evaluate the expression and return the result as a CValue (tick-based).
-    /// The result space is the same as the left operand's space.
+    /// Pure: no state mutation. Calling this multiple times with the same operands
+    /// always yields the same result.
     /// </summary>
     public CValue Evaluate()
     {
-        var l = Left.Value;
-        var r = Right?.Value ?? Left.Space.One();
+        var l = Left;
+        var r = Right ?? Left.Space.One();
 
         return Op switch
         {
-            OperationKind.Add => l + r,
-            OperationKind.Subtract => l - r,
-            OperationKind.Multiply => l * r,
-            OperationKind.Divide => l / r,
-            OperationKind.Power => CValue.Pow(l, r),
-            OperationKind.Negate => -l,
-            OperationKind.Reciprocal => CValue.Inverse(l),
+            OperationKind.Add         => l + r,
+            OperationKind.Subtract    => l - r,
+            OperationKind.Multiply    => l * r,
+            OperationKind.Divide      => l / r,
+            OperationKind.Power       => CValue.Pow(l, r),
+            OperationKind.Negate      => -l,
+            OperationKind.Reciprocal  => CValue.Inverse(l),
             OperationKind.FlipPolarity => CValue.Conjugate(l),
 
-            // Filters: extract single-axis components
-            OperationKind.FilterUnit => ExtractUnit(l),
-            OperationKind.FilterUnot => ExtractUnot(l),
+            // Filters: extract single-axis components, zero all others
+            OperationKind.FilterUnit  => ExtractUnit(l),
+            OperationKind.FilterUnot  => ExtractUnot(l),
 
             // Mirrors: reflect across an axis
-            OperationKind.MirrorOnUnit => MirrorUnit(l),
-            OperationKind.MirrorOnUnot => MirrorUnot(l),
+            OperationKind.MirrorOnUnit  => MirrorUnit(l),
+            OperationKind.MirrorOnUnot  => MirrorUnot(l),
 
             // Repeats: apply operation N times
-            OperationKind.AppendAll => RepeatAdd(l, r, Repeats),
+            OperationKind.AppendAll   => RepeatAdd(l, r, Repeats),
             OperationKind.MultiplyAll => RepeatMultiply(l, r, Repeats),
 
             _ => l // default passthrough for unimplemented ops
@@ -70,14 +74,14 @@ public class CExpr : CBox
     }
 
     /// <summary>
-    /// Evaluate and compute tension of the result.
+    /// Evaluate the expression and also compute the tension of the result
+    /// against the space bounds.
+    /// Pure: both the result and the tension are returned without mutating any state.
     /// </summary>
     public (CValue Result, Tension Tension) EvaluateWithTension()
     {
         var result = Evaluate();
-        Value = result;
-        UpdateValidity();
-        return (result, CurrentTension);
+        return (result, Tension.Compute(result));
     }
 
     // ================================================================
@@ -147,6 +151,8 @@ public class CExpr : CBox
     public override string ToString()
     {
         var symbol = Op.GetSymbol();
-        return $"{Left.Value} {symbol} {Right?.Value.ToString() ?? ""} = {Value}";
+        return IsUnary
+            ? $"{symbol} {Left}"
+            : $"{Left} {symbol} {Right}";
     }
 }

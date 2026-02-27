@@ -1,53 +1,79 @@
 namespace Complexity.Core;
 
 /// <summary>
-/// A DynamicExpr resolves an expression iteratively over time.
+/// The simulation layer: runs a CExpr iteratively over time, with optional
+/// resolver pressures, tracking history and convergence.
+///
+/// CExpr is a pure, stateless transform — it maps values to values.
+/// DynamicExpr is the engine that drives that transform over time and owns
+/// all mutable state: CurrentValue, History, Resolvers, Tick, Converged.
 ///
 /// "Multiplication can be thought of as continuous over time,
 ///  while boolean ops are instant/one-shot."
 ///
-/// Each step evaluates the expression, applies resolver pressures (in ticks),
-/// snaps to bounds, and records history. The process continues
-/// until convergence or max steps.
+/// Each step:
+///   1. Evaluates the expression (pure CExpr call)
+///   2. Applies resolver pressures (all in ticks)
+///   3. Snaps to space bounds
+///   4. Records into History
+///   5. Fires StepCompleted event
 ///
-/// This is the serial dimension: output feeds back into input.
-/// Compound interest, sine-like oscillation, iterative refinement
-/// all emerge from this pattern.
-///
-/// Convergence is measured in ticks — when tick changes fall below threshold.
+/// Convergence is measured in ticks: when the change between steps falls
+/// below a threshold, the system is considered stable.
 /// </summary>
 public class DynamicExpr
 {
     public CExpr Expression { get; }
+
+    /// <summary>The evolving output value at the current tick.</summary>
+    public CValue CurrentValue { get; private set; }
+
+    /// <summary>State captured after each step.</summary>
+    public List<CValue> History { get; } = new();
+
+    /// <summary>
+    /// External forces acting on the result at each step.
+    /// Each perspective pushes CurrentValue toward its preferred region (in ticks).
+    /// </summary>
+    public Dictionary<string, Perspective> Resolvers { get; } = new();
+
     public int Tick { get; private set; }
     public bool Converged { get; private set; }
 
-    /// <summary>
-    /// Called after each step with the current state.
-    /// </summary>
+    /// <summary>Called after each step with the current result.</summary>
     public event Action<DynamicExpr, CValue>? StepCompleted;
 
     public DynamicExpr(CExpr expression)
     {
         Expression = expression;
+        CurrentValue = expression.Space.Zero();
     }
+
+    /// <summary>Add a named resolver that will pressure the result each step.</summary>
+    public void AddResolver(string name, Perspective perspective)
+        => Resolvers[name] = perspective;
+
+    /// <summary>Remove a named resolver.</summary>
+    public bool RemoveResolver(string name) => Resolvers.Remove(name);
+
+    /// <summary>Clear the step history.</summary>
+    public void ClearHistory() => History.Clear();
 
     /// <summary>
     /// Advance one time step:
-    /// 1. Evaluate the expression
-    /// 2. Apply resolver pressures from all perspectives (in ticks)
-    /// 3. Snap to space bounds
-    /// 4. Record history
-    /// 5. Update validity
+    ///   1. Evaluate the expression (pure — uses Left/Right from CExpr)
+    ///   2. Apply resolver pressures in ticks
+    ///   3. Snap to space bounds
+    ///   4. Record into History, update CurrentValue, fire event
     /// </summary>
     public CValue Step(double damping = 0.5)
     {
-        // Evaluate expression at current state
+        // Evaluate the pure expression
         var current = Expression.Evaluate();
         var comps = (long[])current.Components.Clone();
 
-        // Apply external resolver pressures (in ticks)
-        foreach (var (name, perspective) in Expression.Resolvers)
+        // Apply external resolver pressures (all in ticks)
+        foreach (var (_, perspective) in Resolvers)
         {
             var pressure = perspective.ComputePressure(comps);
             for (int i = 0; i < comps.Length; i++)
@@ -57,10 +83,8 @@ public class DynamicExpr
         // Snap to bounds (already in ticks, no quantization needed)
         current = new CValue(Expression.Space, comps, current.Certainty).Snap();
 
-        // Update expression state
-        Expression.Value = current;
-        Expression.UpdateValidity();
-        Expression.History.Add(current.Clone());
+        CurrentValue = current;
+        History.Add(current.Clone());
         Tick++;
 
         StepCompleted?.Invoke(this, current);
@@ -69,22 +93,18 @@ public class DynamicExpr
 
     /// <summary>
     /// Run until convergence or max steps.
-    /// Returns the final converged value.
-    /// Convergence threshold is in ticks.
+    /// Convergence: tick-level change between steps falls below threshold.
+    /// Returns the final CurrentValue.
     /// </summary>
-    /// <param name="maxSteps">Maximum number of steps before giving up.</param>
-    /// <param name="threshold">Max tick change between steps to consider converged.</param>
-    /// <param name="damping">Damping factor for resolver pressures (0..1).</param>
     public CValue Resolve(int maxSteps = 100, long threshold = 1, double damping = 0.5)
     {
         Converged = false;
 
         for (int s = 0; s < maxSteps; s++)
         {
-            var prev = Expression.Value.Clone();
+            var prev = CurrentValue.Clone();
             var current = Step(damping);
 
-            // Check if anything meaningful changed (in ticks)
             long maxDelta = 0;
             for (int i = 0; i < Expression.Space.Dims; i++)
             {
@@ -99,21 +119,18 @@ public class DynamicExpr
             }
         }
 
-        return Expression.Value;
+        return CurrentValue;
     }
 
-    /// <summary>
-    /// Reset the dynamic expression to initial state.
-    /// </summary>
+    /// <summary>Reset to initial state: zero tick, no history, zero current value.</summary>
     public void Reset()
     {
         Tick = 0;
         Converged = false;
-        Expression.ClearHistory();
-        Expression.Value = Expression.Space.Zero();
-        Expression.UpdateValidity();
+        History.Clear();
+        CurrentValue = Expression.Space.Zero();
     }
 
     public override string ToString() =>
-        $"DynamicExpr(tick={Tick}, converged={Converged}, validity={Expression.Validity:0.##})";
+        $"DynamicExpr(tick={Tick}, converged={Converged})";
 }

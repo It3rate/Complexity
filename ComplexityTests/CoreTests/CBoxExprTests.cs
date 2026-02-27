@@ -17,7 +17,8 @@ public class CBoxExprTests
     }
 
     // ================================================================
-    //  CBox Tests
+    //  CBox Tests — CBox still exists as a simulation container;
+    //  it is just no longer the base of CExpr.
     // ================================================================
 
     [TestMethod]
@@ -121,14 +122,13 @@ public class CBoxExprTests
 
     // ================================================================
     //  CExpr Tests — Arithmetic Operations
+    //  CExpr takes CValues directly. No CBox wrapper needed.
     // ================================================================
 
     [TestMethod]
     public void ExprAdd()
     {
-        var left = new CBox(_intSpace, _intSpace.Value(10.0));
-        var right = new CBox(_intSpace, _intSpace.Value(20.0));
-        var expr = new CExpr(left, right, OperationKind.Add);
+        var expr = new CExpr(_intSpace.Value(10.0), _intSpace.Value(20.0), OperationKind.Add);
 
         var result = expr.Evaluate();
         Assert.AreEqual(30L, result.Components[0]);
@@ -137,9 +137,7 @@ public class CBoxExprTests
     [TestMethod]
     public void ExprSubtract()
     {
-        var left = new CBox(_intSpace, _intSpace.Value(30.0));
-        var right = new CBox(_intSpace, _intSpace.Value(10.0));
-        var expr = new CExpr(left, right, OperationKind.Subtract);
+        var expr = new CExpr(_intSpace.Value(30.0), _intSpace.Value(10.0), OperationKind.Subtract);
 
         var result = expr.Evaluate();
         Assert.AreEqual(20L, result.Components[0]);
@@ -148,9 +146,7 @@ public class CBoxExprTests
     [TestMethod]
     public void ExprMultiplyIntegers()
     {
-        var left = new CBox(_intSpace, _intSpace.Value(6.0));
-        var right = new CBox(_intSpace, _intSpace.Value(7.0));
-        var expr = new CExpr(left, right, OperationKind.Multiply);
+        var expr = new CExpr(_intSpace.Value(6.0), _intSpace.Value(7.0), OperationKind.Multiply);
 
         var result = expr.Evaluate();
         Assert.AreEqual(42L, result.Components[0]);
@@ -160,9 +156,9 @@ public class CBoxExprTests
     public void ExprMultiplySegments()
     {
         // (3 + 4i) * (1 + 2i) = -5 + 10i
-        var left = new CBox(_segSpace, 4.0, 3.0);  // unot=4, unit=3
-        var right = new CBox(_segSpace, 2.0, 1.0);  // unot=2, unit=1
-        var expr = new CExpr(left, right, OperationKind.Multiply);
+        var left  = new CValue(_segSpace, new[] { 4.0, 3.0 });  // unot=4, unit=3
+        var right = new CValue(_segSpace, new[] { 2.0, 1.0 });  // unot=2, unit=1
+        var expr  = new CExpr(left, right, OperationKind.Multiply);
 
         var result = expr.Evaluate();
         Assert.AreEqual(10.0, result.GetValue(0), Utils.Tolerance); // imaginary
@@ -172,9 +168,7 @@ public class CBoxExprTests
     [TestMethod]
     public void ExprDivide()
     {
-        var left = new CBox(_intSpace, _intSpace.Value(42.0));
-        var right = new CBox(_intSpace, _intSpace.Value(6.0));
-        var expr = new CExpr(left, right, OperationKind.Divide);
+        var expr = new CExpr(_intSpace.Value(42.0), _intSpace.Value(6.0), OperationKind.Divide);
 
         var result = expr.Evaluate();
         Assert.AreEqual(7L, result.Components[0]);
@@ -183,9 +177,7 @@ public class CBoxExprTests
     [TestMethod]
     public void ExprPower()
     {
-        var left = new CBox(_intSpace, _intSpace.Value(3.0));
-        var right = new CBox(_intSpace, _intSpace.Value(4.0));
-        var expr = new CExpr(left, right, OperationKind.Power);
+        var expr = new CExpr(_intSpace.Value(3.0), _intSpace.Value(4.0), OperationKind.Power);
 
         var result = expr.Evaluate();
         Assert.AreEqual(81L, result.Components[0]);
@@ -198,7 +190,7 @@ public class CBoxExprTests
     [TestMethod]
     public void ExprNegate()
     {
-        var left = new CBox(_segSpace, 3.0, 5.0);
+        var left = new CValue(_segSpace, new[] { 3.0, 5.0 });
         var expr = new CExpr(left, null, OperationKind.Negate);
 
         var result = expr.Evaluate();
@@ -209,11 +201,9 @@ public class CBoxExprTests
     [TestMethod]
     public void ExprReciprocal()
     {
-        // With TPU=1, 1/4 = 0.25 → 0 ticks (rounds to 0).
-        // Use a higher-resolution space for reciprocal.
+        // Use higher-resolution space so 1/4 doesn't round to 0 in ticks.
         var hiRes = CSpace.Integer(-1000, 1000, ticksPerUnit: 100);
-        var left = new CBox(hiRes, hiRes.Value(4.0));
-        var expr = new CExpr(left, null, OperationKind.Reciprocal);
+        var expr  = new CExpr(hiRes.Value(4.0), null, OperationKind.Reciprocal);
 
         var result = expr.Evaluate();
         Assert.AreEqual(0.25, result.GetValue(0), 0.01);
@@ -222,12 +212,12 @@ public class CBoxExprTests
     [TestMethod]
     public void ExprFlipPolarityIsConjugate()
     {
-        var left = new CBox(_segSpace, 4.0, 3.0);
+        var left = new CValue(_segSpace, new[] { 4.0, 3.0 });
         var expr = new CExpr(left, null, OperationKind.FlipPolarity);
 
         var result = expr.Evaluate();
         Assert.AreEqual(-4.0, result.GetValue(0), Utils.Tolerance); // imaginary negated
-        Assert.AreEqual(3.0, result.GetValue(1), Utils.Tolerance);  // real unchanged
+        Assert.AreEqual(3.0,  result.GetValue(1), Utils.Tolerance); // real unchanged
     }
 
     // ================================================================
@@ -237,7 +227,7 @@ public class CBoxExprTests
     [TestMethod]
     public void ExprFilterUnit()
     {
-        var left = new CBox(_segSpace, 4.0, 3.0);
+        var left = new CValue(_segSpace, new[] { 4.0, 3.0 });
         var expr = new CExpr(left, null, OperationKind.FilterUnit);
 
         var result = expr.Evaluate();
@@ -248,7 +238,7 @@ public class CBoxExprTests
     [TestMethod]
     public void ExprFilterUnot()
     {
-        var left = new CBox(_segSpace, 4.0, 3.0);
+        var left = new CValue(_segSpace, new[] { 4.0, 3.0 });
         var expr = new CExpr(left, null, OperationKind.FilterUnot);
 
         var result = expr.Evaluate();
@@ -259,23 +249,23 @@ public class CBoxExprTests
     [TestMethod]
     public void ExprMirrorOnUnit()
     {
-        var left = new CBox(_segSpace, 4.0, 3.0);
+        var left = new CValue(_segSpace, new[] { 4.0, 3.0 });
         var expr = new CExpr(left, null, OperationKind.MirrorOnUnit);
 
         var result = expr.Evaluate();
-        Assert.AreEqual(4L, result.Components[0]);   // unot unchanged
+        Assert.AreEqual(4L,  result.Components[0]);  // unot unchanged
         Assert.AreEqual(-3L, result.Components[1]);  // unit negated
     }
 
     [TestMethod]
     public void ExprMirrorOnUnot()
     {
-        var left = new CBox(_segSpace, 4.0, 3.0);
+        var left = new CValue(_segSpace, new[] { 4.0, 3.0 });
         var expr = new CExpr(left, null, OperationKind.MirrorOnUnot);
 
         var result = expr.Evaluate();
         Assert.AreEqual(-4L, result.Components[0]); // unot negated
-        Assert.AreEqual(3L, result.Components[1]);   // unit unchanged
+        Assert.AreEqual(3L,  result.Components[1]); // unit unchanged
     }
 
     // ================================================================
@@ -285,9 +275,10 @@ public class CBoxExprTests
     [TestMethod]
     public void ExprAppendAll()
     {
-        var left = new CBox(_intSpace, _intSpace.Value(10.0));
-        var right = new CBox(_intSpace, _intSpace.Value(3.0));
-        var expr = new CExpr(left, right, OperationKind.AppendAll) { Repeats = 3 };
+        var expr = new CExpr(_intSpace.Value(10.0), _intSpace.Value(3.0), OperationKind.AppendAll)
+        {
+            Repeats = 3
+        };
 
         var result = expr.Evaluate();
         Assert.AreEqual(19L, result.Components[0]); // 10 + 3 + 3 + 3
@@ -296,9 +287,10 @@ public class CBoxExprTests
     [TestMethod]
     public void ExprMultiplyAll()
     {
-        var left = new CBox(_intSpace, _intSpace.Value(2.0));
-        var right = new CBox(_intSpace, _intSpace.Value(3.0));
-        var expr = new CExpr(left, right, OperationKind.MultiplyAll) { Repeats = 3 };
+        var expr = new CExpr(_intSpace.Value(2.0), _intSpace.Value(3.0), OperationKind.MultiplyAll)
+        {
+            Repeats = 3
+        };
 
         var result = expr.Evaluate();
         Assert.AreEqual(54L, result.Components[0]); // 2 * 3 * 3 * 3
@@ -307,25 +299,21 @@ public class CBoxExprTests
     [TestMethod]
     public void ExprIsUnary()
     {
-        var left = new CBox(_intSpace, _intSpace.Value(5.0));
-        var unary = new CExpr(left, null, OperationKind.Negate);
+        var unary  = new CExpr(_intSpace.Value(5.0), null, OperationKind.Negate);
         Assert.IsTrue(unary.IsUnary);
 
-        var right = new CBox(_intSpace, _intSpace.Value(3.0));
-        var binary = new CExpr(left, right, OperationKind.Add);
+        var binary = new CExpr(_intSpace.Value(5.0), _intSpace.Value(3.0), OperationKind.Add);
         Assert.IsFalse(binary.IsUnary);
     }
 
     // ================================================================
-    //  CExpr Tests — EvaluateWithTension
+    //  CExpr Tests — EvaluateWithTension (pure, no side effects)
     // ================================================================
 
     [TestMethod]
     public void EvaluateWithTensionInBounds()
     {
-        var left = new CBox(_intSpace, _intSpace.Value(30.0));
-        var right = new CBox(_intSpace, _intSpace.Value(20.0));
-        var expr = new CExpr(left, right, OperationKind.Add);
+        var expr = new CExpr(_intSpace.Value(30.0), _intSpace.Value(20.0), OperationKind.Add);
 
         var (result, tension) = expr.EvaluateWithTension();
         Assert.AreEqual(50L, result.Components[0]);
@@ -335,9 +323,7 @@ public class CBoxExprTests
     [TestMethod]
     public void EvaluateWithTensionOutOfBounds()
     {
-        var left = new CBox(_intSpace, _intSpace.Value(80.0));
-        var right = new CBox(_intSpace, _intSpace.Value(40.0));
-        var expr = new CExpr(left, right, OperationKind.Add);
+        var expr = new CExpr(_intSpace.Value(80.0), _intSpace.Value(40.0), OperationKind.Add);
 
         var (result, tension) = expr.EvaluateWithTension();
         Assert.AreEqual(120L, result.Components[0]);
@@ -346,26 +332,25 @@ public class CBoxExprTests
     }
 
     [TestMethod]
-    public void ExprUpdatesValueOnEvaluateWithTension()
+    public void ExprEvaluateWithTensionIsPure()
     {
-        var left = new CBox(_intSpace, _intSpace.Value(10.0));
-        var right = new CBox(_intSpace, _intSpace.Value(5.0));
-        var expr = new CExpr(left, right, OperationKind.Multiply);
+        // Evaluating twice should yield identical results — no mutable state.
+        var expr = new CExpr(_intSpace.Value(10.0), _intSpace.Value(5.0), OperationKind.Multiply);
 
-        Assert.AreEqual(0L, expr.Value.Components[0]); // initially zero
+        var (result1, tension1) = expr.EvaluateWithTension();
+        var (result2, tension2) = expr.EvaluateWithTension();
 
-        expr.EvaluateWithTension();
-        Assert.AreEqual(50L, expr.Value.Components[0]);
+        Assert.AreEqual(50L, result1.Components[0]);
+        Assert.AreEqual(result1.Components[0], result2.Components[0]);
+        Assert.AreEqual(tension1.Total, tension2.Total);
     }
 
     [TestMethod]
     public void ExprToString()
     {
-        var left = new CBox(_intSpace, _intSpace.Value(3.0));
-        var right = new CBox(_intSpace, _intSpace.Value(4.0));
-        var expr = new CExpr(left, right, OperationKind.Add);
-        expr.EvaluateWithTension();
+        var expr = new CExpr(_intSpace.Value(3.0), _intSpace.Value(4.0), OperationKind.Add);
 
+        // ToString works without needing to evaluate first.
         var str = expr.ToString();
         Assert.IsTrue(str.Contains("+") || str.Contains("Add"),
             $"ToString should contain operator info, got: {str}");
@@ -373,15 +358,14 @@ public class CBoxExprTests
 
     // ================================================================
     //  DynamicExpr Tests
+    //  State (history, resolvers) now lives on DynamicExpr, not CExpr.
     // ================================================================
 
     [TestMethod]
     public void DynamicExprStepAdvancesTick()
     {
-        var left = new CBox(_intSpace, _intSpace.Value(10.0));
-        var right = new CBox(_intSpace, _intSpace.Value(5.0));
-        var expr = new CExpr(left, right, OperationKind.Add);
-        var dyn = new DynamicExpr(expr);
+        var expr = new CExpr(_intSpace.Value(10.0), _intSpace.Value(5.0), OperationKind.Add);
+        var dyn  = new DynamicExpr(expr);
 
         Assert.AreEqual(0, dyn.Tick);
         dyn.Step();
@@ -393,22 +377,19 @@ public class CBoxExprTests
     [TestMethod]
     public void DynamicExprStepRecordsHistory()
     {
-        var left = new CBox(_intSpace, _intSpace.Value(10.0));
-        var right = new CBox(_intSpace, _intSpace.Value(5.0));
-        var expr = new CExpr(left, right, OperationKind.Add);
-        var dyn = new DynamicExpr(expr);
+        var expr = new CExpr(_intSpace.Value(10.0), _intSpace.Value(5.0), OperationKind.Add);
+        var dyn  = new DynamicExpr(expr);
 
         dyn.Step();
-        Assert.AreEqual(1, expr.History.Count);
+        // History lives on dyn, not expr.
+        Assert.AreEqual(1, dyn.History.Count);
     }
 
     [TestMethod]
     public void DynamicExprResolveConverges()
     {
-        var left = new CBox(_intSpace, _intSpace.Value(10.0));
-        var right = new CBox(_intSpace, _intSpace.Value(5.0));
-        var expr = new CExpr(left, right, OperationKind.Add);
-        var dyn = new DynamicExpr(expr);
+        var expr = new CExpr(_intSpace.Value(10.0), _intSpace.Value(5.0), OperationKind.Add);
+        var dyn  = new DynamicExpr(expr);
 
         var result = dyn.Resolve(maxSteps: 10, threshold: 1);
         Assert.IsTrue(dyn.Converged);
@@ -418,10 +399,8 @@ public class CBoxExprTests
     [TestMethod]
     public void DynamicExprReset()
     {
-        var left = new CBox(_intSpace, _intSpace.Value(10.0));
-        var right = new CBox(_intSpace, _intSpace.Value(5.0));
-        var expr = new CExpr(left, right, OperationKind.Add);
-        var dyn = new DynamicExpr(expr);
+        var expr = new CExpr(_intSpace.Value(10.0), _intSpace.Value(5.0), OperationKind.Add);
+        var dyn  = new DynamicExpr(expr);
 
         dyn.Resolve(maxSteps: 5);
         Assert.IsTrue(dyn.Tick > 0);
@@ -429,16 +408,15 @@ public class CBoxExprTests
         dyn.Reset();
         Assert.AreEqual(0, dyn.Tick);
         Assert.IsFalse(dyn.Converged);
-        Assert.AreEqual(0, expr.History.Count);
+        // History lives on dyn.
+        Assert.AreEqual(0, dyn.History.Count);
     }
 
     [TestMethod]
     public void DynamicExprStepCompletedEvent()
     {
-        var left = new CBox(_intSpace, _intSpace.Value(10.0));
-        var right = new CBox(_intSpace, _intSpace.Value(5.0));
-        var expr = new CExpr(left, right, OperationKind.Add);
-        var dyn = new DynamicExpr(expr);
+        var expr = new CExpr(_intSpace.Value(10.0), _intSpace.Value(5.0), OperationKind.Add);
+        var dyn  = new DynamicExpr(expr);
 
         int eventCount = 0;
         CValue? lastValue = null;
@@ -460,14 +438,13 @@ public class CBoxExprTests
     public void DynamicExprWithResolverPressure()
     {
         var space = CSpace.Integer(0, 10);
-        var left = new CBox(space, space.Value(8.0));
-        var right = new CBox(space, space.Value(5.0));
-        var expr = new CExpr(left, right, OperationKind.Add); // 8 + 5 = 13 ticks, out of bounds
+        var expr  = new CExpr(space.Value(8.0), space.Value(5.0), OperationKind.Add); // 8 + 5 = 13, out of bounds
 
         var constraint = new Perspective(space, space.Value(5.0), 1.0);
-        expr.AddResolver("bound", constraint);
-
+        // Resolvers live on dyn, not expr.
         var dyn = new DynamicExpr(expr);
+        dyn.AddResolver("bound", constraint);
+
         var result = dyn.Resolve(maxSteps: 50, threshold: 1, damping: 0.3);
 
         Assert.IsTrue(result.Components[0] <= 13,
@@ -477,9 +454,8 @@ public class CBoxExprTests
     [TestMethod]
     public void DynamicExprToString()
     {
-        var left = new CBox(_intSpace, _intSpace.Value(10.0));
-        var expr = new CExpr(left, null, OperationKind.Negate);
-        var dyn = new DynamicExpr(expr);
+        var expr = new CExpr(_intSpace.Value(10.0), null, OperationKind.Negate);
+        var dyn  = new DynamicExpr(expr);
 
         var str = dyn.ToString();
         Assert.IsTrue(str.Contains("DynamicExpr"));
@@ -494,9 +470,7 @@ public class CBoxExprTests
     [TestMethod]
     public void ExprUnknownOpPassesThrough()
     {
-        var left = new CBox(_intSpace, _intSpace.Value(42.0));
-        var right = new CBox(_intSpace, _intSpace.Value(5.0));
-        var expr = new CExpr(left, right, OperationKind.None);
+        var expr = new CExpr(_intSpace.Value(42.0), _intSpace.Value(5.0), OperationKind.None);
 
         var result = expr.Evaluate();
         Assert.AreEqual(42L, result.Components[0]);
@@ -505,8 +479,9 @@ public class CBoxExprTests
     [TestMethod]
     public void ExprUnaryUsesOneAsDefaultRight()
     {
-        var left = new CBox(_intSpace, _intSpace.Value(42.0));
-        var expr = new CExpr(left, null, OperationKind.Multiply);
+        // When Right is null, the default right value is Space.One().
+        // For integer space with TPU=1, One() = 1 tick = value 1.
+        var expr = new CExpr(_intSpace.Value(42.0), null, OperationKind.Multiply);
 
         var result = expr.Evaluate();
         Assert.AreEqual(42L, result.Components[0]);
