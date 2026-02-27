@@ -1,27 +1,28 @@
 namespace Complexity.Core;
 
 /// <summary>
-/// A value living in a complexity space. Generalizes PRange from 2 doubles to N longs (ticks).
+/// A value living in a number frame (CSpace). All values are longs (ticks) until evaluated.
+/// When evaluated, they become doubles by dividing by TicksPerUnit.
 ///
 /// Components[i] is the tick value along axis i.
-/// To get the unit-scale value, divide by TicksPerUnit: Components[i] / (double)Axes[i].TicksPerUnit.
-/// Certainty is how confident this value is (0 = unknown, 1 = certain).
+/// There is no floating point resolution in this system — resolution is always tick-based.
 ///
 /// For a 2D segment space, Components[0]=unot (Start/imaginary) and
-/// Components[1]=unit (End/real), matching PRange when converted to doubles.
+/// Components[1]=unit (End/real), matching PRange when evaluated to doubles.
 ///
 /// All operators create new CValues — the Components array is never mutated
-/// through operator results.
+/// through operator results. Operators work entirely in long arithmetic.
+/// Doubles are only derived on demand via Evaluate() / GetValue() / GetValues().
 ///
-/// Storage is always longs (ticks). Doubles are derived on demand via GetValue()/GetValues().
-/// This matches the Focal pattern: Focal stores longs, PRange is computed from them.
+/// Storage: always longs (ticks).
+/// Evaluation: always doubles (ticks / TicksPerUnit).
 /// </summary>
 public struct CValue : IEquatable<CValue>
 {
     /// <summary> Tolerance in ticks. 1 tick is the minimum distinguishable difference. </summary>
     public static readonly long Tolerance = 1;
 
-    /// <summary> Tolerance for double comparisons (derived values). </summary>
+    /// <summary> Tolerance for double comparisons (derived/evaluated values). </summary>
     public static readonly double DoubleTolerance = 0.000000001;
 
     public CSpace Space { get; }
@@ -33,6 +34,7 @@ public struct CValue : IEquatable<CValue>
 
     /// <summary>
     /// Create a CValue from tick components (primary constructor).
+    /// Values are longs until evaluated.
     /// </summary>
     public CValue(CSpace space, long[] components, double certainty = 1.0)
     {
@@ -42,9 +44,9 @@ public struct CValue : IEquatable<CValue>
     }
 
     /// <summary>
-    /// Create a CValue from value-space doubles. Each component is converted to ticks:
-    /// ticks[i] = (long)Math.Round(value[i] * Axes[i].TicksPerUnit).
-    /// This is the convenience constructor for human-readable input.
+    /// Create a CValue from value-space doubles (convenience constructor).
+    /// Each component is converted to ticks: (long)Math.Round(value * TicksPerUnit).
+    /// Once stored, the value is longs until evaluated again.
     /// </summary>
     public CValue(CSpace space, double[] values, double certainty = 1.0)
     {
@@ -68,9 +70,33 @@ public struct CValue : IEquatable<CValue>
     }
 
     // ================================================================
-    //  VALUE ACCESSORS — doubles derived from ticks on demand
-    //  "divide numerator/denominator when needing a double"
+    //  EVALUATION — convert from ticks (longs) to value-space (doubles)
+    //  "All values should be longs until evaluated,
+    //   when evaluated they should be floats [doubles]."
+    //  Values are evaluated based mostly on the unit (TicksPerUnit)
+    //  but also on the range and other properties.
     // ================================================================
+
+    /// <summary>
+    /// Evaluate this value: convert from ticks to a double.
+    /// For 1D values, returns the single component evaluated.
+    /// For ND values, returns the unit (direction=+1) component evaluated.
+    /// This is the main evaluation step: ticks / TicksPerUnit → double.
+    /// </summary>
+    public double Evaluate()
+    {
+        if (!IsValid) return 0.0;
+        if (Space.Dims == 1)
+            return (double)Components[0] / Space.Axes[0].TicksPerUnit;
+        return UnitValue;
+    }
+
+    /// <summary>
+    /// Evaluate all components: convert every axis from ticks to doubles.
+    /// Returns an array of doubles, one per axis: ticks[i] / TicksPerUnit[i].
+    /// Same as GetValues() — this is the explicit evaluation step.
+    /// </summary>
+    public double[] EvaluateAll() => GetValues();
 
     /// <summary>
     /// Get all components as value-space doubles: ticks / ticksPerUnit.
@@ -105,12 +131,12 @@ public struct CValue : IEquatable<CValue>
         new CValue(space, ticks);
 
     // ================================================================
-    //  UNIT/UNOT ACCESSORS (compatibility with PRange)
-    //  These return doubles (derived from ticks).
+    //  UNIT/UNOT ACCESSORS (compatibility with PRange/segment convention)
+    //  These return doubles (evaluated from ticks).
     // ================================================================
 
     /// <summary>
-    /// Value on the first direction=+1 axis (the "real" / "End" component).
+    /// Value on the first direction=+1 axis (the "real" / "End" / "unit" component).
     /// Returns double: ticks / ticksPerUnit.
     /// </summary>
     public double UnitValue
@@ -126,7 +152,7 @@ public struct CValue : IEquatable<CValue>
     }
 
     /// <summary>
-    /// Value on the first direction=-1 axis (the "imaginary" / "Start" component).
+    /// Value on the first direction=-1 axis (the "imaginary" / "Start" / "unot" component).
     /// Returns double: ticks / ticksPerUnit.
     /// </summary>
     public double UnotValue
@@ -146,7 +172,7 @@ public struct CValue : IEquatable<CValue>
     // ================================================================
 
     /// <summary>
-    /// Compute how well this value fits its space's bounds.
+    /// Compute how well this value fits its frame's bounds.
     /// </summary>
     public Tension ComputeTension() => Tension.Compute(this);
 
@@ -221,8 +247,6 @@ public struct CValue : IEquatable<CValue>
     //  For heterogeneous TPU:
     //    result_ticks[target] += a_ticks[left] * b_ticks[right] * sign
     //                           * Axes[target].TPU / (Axes[left].TPU * Axes[right].TPU)
-    //
-    //  This is the "divide numerator/denominator" approach.
     // ================================================================
 
     public static CValue operator *(CValue a, CValue b)
@@ -270,8 +294,6 @@ public struct CValue : IEquatable<CValue>
     /// <summary>
     /// Division: a/b = a * conj(b) / |b|².
     /// Computed directly to avoid precision loss from rounding an intermediate Inverse.
-    /// The numerator (a * conj(b)) stays in full tick precision; we divide by the
-    /// scalar |b|² only once at the end.
     /// </summary>
     public static CValue operator /(CValue a, CValue b)
     {
@@ -289,7 +311,6 @@ public struct CValue : IEquatable<CValue>
 
     /// <summary>
     /// Multiply by a scalar. Direct: scale each tick component.
-    /// result_ticks[i] = (long)Math.Round(a_ticks[i] * scalar).
     /// </summary>
     public static CValue operator *(CValue a, double scalar)
     {
@@ -328,12 +349,12 @@ public struct CValue : IEquatable<CValue>
     public CValue Conjugate() => Conjugate(this);
 
     // ================================================================
-    //  MAGNITUDE — returns doubles (derived from tick values)
+    //  MAGNITUDE — returns doubles (evaluated from tick values)
     // ================================================================
 
     /// <summary>
     /// Magnitude squared: a * conjugate(a), taking the scalar (direction=+1) components.
-    /// Returns a double in value-space (not ticks).
+    /// Returns a double in value-space (evaluated, not ticks).
     /// For complex: |a+bi|² = a² + b².
     /// </summary>
     public static double MagnitudeSquared(CValue a)
@@ -357,13 +378,12 @@ public struct CValue : IEquatable<CValue>
     public static double Abs(CValue a) => a.Magnitude();
 
     // ================================================================
-    //  INVERSE — uses doubles internally, returns tick-based CValue
+    //  INVERSE — uses evaluated doubles internally, returns tick-based CValue
     // ================================================================
 
     /// <summary>
     /// Multiplicative inverse: inv(a) = One / a.
-    /// Uses the same direct numerator/|a|² approach as the division operator
-    /// to maximize tick-level precision.
+    /// Uses the same direct numerator/|a|² approach as the division operator.
     /// </summary>
     public static CValue Inverse(CValue a)
     {
@@ -375,12 +395,12 @@ public struct CValue : IEquatable<CValue>
     public CValue Reciprocal() => Inverse(this);
 
     // ================================================================
-    //  POWER — uses doubles (polar form), converts back to ticks
+    //  POWER — uses evaluated doubles (polar form), converts back to ticks
     // ================================================================
 
     /// <summary>
-    /// Raise to a power. Matches PRange.Pow (lines 224-239).
-    /// Converts to doubles, computes in polar form, converts back to ticks.
+    /// Raise to a power. Converts to evaluated doubles, computes in polar form,
+    /// converts back to ticks.
     /// </summary>
     public static CValue Pow(CValue baseVal, double exponent)
     {
@@ -400,7 +420,7 @@ public struct CValue : IEquatable<CValue>
                 baseVal.Certainty);
         }
 
-        // 2D: polar form — matches PRange.Pow exactly
+        // 2D: polar form — matches PRange.Pow
         if (baseVal.Space.Dims == 2)
         {
             int iAxis = -1, rAxis = -1;
@@ -481,7 +501,7 @@ public struct CValue : IEquatable<CValue>
     public CValue Square() => this * this;
 
     // ================================================================
-    //  NORMALIZE — uses doubles, returns ticks
+    //  NORMALIZE — uses evaluated doubles, returns ticks
     // ================================================================
 
     /// <summary>
@@ -500,12 +520,12 @@ public struct CValue : IEquatable<CValue>
     public CValue NormalizeTo(CValue target) => Normalize() * target;
 
     // ================================================================
-    //  DISTANCE — returns double
+    //  DISTANCE — returns evaluated double
     // ================================================================
 
     /// <summary>
-    /// Distance between two values in the same space.
-    /// Computed in value-space (doubles) for meaningful comparison.
+    /// Distance between two values in the same frame.
+    /// Computed in value-space (evaluated doubles) for meaningful comparison.
     /// </summary>
     public static double Distance(CValue a, CValue b)
     {

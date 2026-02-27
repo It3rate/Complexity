@@ -1,23 +1,42 @@
 namespace Complexity.Core;
 
 /// <summary>
-/// A complexity space defined by axes + algebra table.
-/// The algebra table IS the space — different tables give different math.
-/// Addition is always component-wise (structural). Multiplication comes from the table.
-/// Boolean operations work on ranges (structural).
+/// A number frame: a configuration of one or more axes that defines a type of number.
+/// The frame is the container for types of numbers — once you have a frame, you can
+/// fill it with as many values as you want.
 ///
-/// Generalizes Domain: where Domain provides a single BasisFocal + MinMaxFocal,
-/// CSpace provides N axes each with their own bounds and resolution.
-/// Two CValues in the same CSpace instance share the same algebra.
+/// Different axis configurations create different number types:
+///   - Single forward axis        → positive numbers (unsigned integers)
+///   - Single signed axis         → signed integers (full positive and negative range)
+///   - Two axes (forward+backward)→ segments/complex numbers ("football field" math)
+///   - Two orthogonal axes        → XY grid / 2D coordinates
+///   - Four axes                  → quaternions
 ///
-/// All values in this space are stored as longs (ticks).
-/// The TicksPerUnit on each axis determines resolution.
+/// The algebra table defines how multiplication works in this frame.
+/// Addition is always component-wise (structural). Different tables give different math.
+///
+/// All values in this frame are stored as longs (ticks).
+/// Resolution comes from TicksPerUnit on each axis.
+/// Values are longs until evaluated — evaluation converts ticks to doubles
+/// by dividing by TicksPerUnit.
+///
+/// The four ways infinity is limited:
+/// 1. Range bounds on each axis (MinBoundTicks / MaxBoundTicks)
+/// 2. Resolution (TicksPerUnit) on each axis
+/// 3. Repeats and overflow rules (global, tracked but not enforced yet)
+/// 4. Values are bounded by the frame they live in
 /// </summary>
 public class CSpace
 {
     public string Name { get; }
     public Axis[] Axes { get; }
     public AlgebraEntry[] Algebra { get; }
+
+    /// <summary>
+    /// Values living in this frame. A frame can accommodate many values.
+    /// "Once we have one of these frames we can fill it with as many numbers as we want."
+    /// </summary>
+    public List<CValue> Values { get; } = new();
 
     public int Dims => Axes.Length;
 
@@ -36,13 +55,17 @@ public class CSpace
 
     /// <summary>
     /// Degrees of freedom with constraints applied.
-    /// A line on a line = 2 DOF; lock the length = 1 DOF.
     /// </summary>
     public int DegreesOfFreedom(HashSet<int>? lockedAxes = null) =>
         Dims - (lockedAxes?.Count ?? 0);
 
+    // ================================================================
+    //  VALUE CREATION — create values that live in this frame
+    //  Values are longs (ticks). They become doubles when evaluated.
+    // ================================================================
+
     /// <summary>
-    /// Create a zero value (all components 0 ticks) in this space.
+    /// Create a zero value (all components 0 ticks) in this frame.
     /// </summary>
     public CValue Zero() => new CValue(this, new long[Dims]);
 
@@ -67,6 +90,8 @@ public class CSpace
     /// <summary>
     /// Create a value with specific value-space components (doubles).
     /// Each component is converted to ticks: (long)Math.Round(value * TicksPerUnit).
+    /// The value is NOT automatically added to the Values collection.
+    /// Use CreateValue() to both create and register.
     /// </summary>
     public CValue Value(params double[] components)
     {
@@ -77,6 +102,8 @@ public class CSpace
 
     /// <summary>
     /// Create a value with specific tick components (longs) directly.
+    /// The value is NOT automatically added to the Values collection.
+    /// Use CreateValueFromTicks() to both create and register.
     /// </summary>
     public CValue ValueFromTicks(params long[] ticks)
     {
@@ -85,13 +112,116 @@ public class CSpace
         return new CValue(this, ticks);
     }
 
+    /// <summary>
+    /// Create a value from value-space doubles AND register it in this frame's Values collection.
+    /// "That frame and range needs to be able to accommodate many possible values inside it."
+    /// </summary>
+    public CValue CreateValue(params double[] components)
+    {
+        var val = Value(components);
+        Values.Add(val);
+        return val;
+    }
+
+    /// <summary>
+    /// Create a value directly from ticks AND register it in this frame's Values collection.
+    /// Values are longs until evaluated — this is the natural way to create tick-based values.
+    /// </summary>
+    public CValue CreateValueFromTicks(params long[] ticks)
+    {
+        var val = ValueFromTicks(ticks);
+        Values.Add(val);
+        return val;
+    }
+
     // ================================================================
-    //  FACTORY METHODS — Named space constructors
+    //  FACTORY METHODS — axis-based frame construction
+    //  Build frames from individual axes (the basic primitive).
     // ================================================================
 
     /// <summary>
-    /// 1 axis, bounded.
-    /// Algebra: value × value = value. (a * b = ab)
+    /// Create a 1D frame from a single axis.
+    /// Algebra: value * value = value (scalar multiplication).
+    /// This is the simplest frame: one axis, one direction.
+    ///
+    /// Example: FromAxis(Axis.Forward("value", 10, ticksPerUnit: 10))
+    /// creates a frame for numbers 0..10 with tenths resolution.
+    /// </summary>
+    public static CSpace FromAxis(Axis axis)
+    {
+        return new CSpace(axis.Name,
+            new[] { axis },
+            new[] { new AlgebraEntry(0, 0, 0, +1) }
+        );
+    }
+
+    /// <summary>
+    /// Create a frame from multiple axes with explicit algebra.
+    /// </summary>
+    public static CSpace FromAxes(string name, Axis[] axes, AlgebraEntry[] algebra)
+    {
+        return new CSpace(name, axes, algebra);
+    }
+
+    /// <summary>
+    /// Create a complex/segment frame from a real (unit) axis and an imaginary (unot) axis.
+    /// "To create a complex number we need two of these [axes]."
+    /// "To create football field style math we need 2 units one pointing left one pointing right."
+    ///
+    /// Produces complex multiplication: (a+bi)(c+di) = (ac-bd) + (ad+bc)i
+    /// The imaginary axis is set to direction=-1 (backward/left-facing).
+    /// The real axis is set to direction=+1 (forward/right-facing).
+    /// </summary>
+    public static CSpace Complex(Axis realAxis, Axis imagAxis)
+    {
+        // Ensure correct directions for complex algebra
+        var imag = new Axis(imagAxis.Name, -1, imagAxis.MinBoundTicks, imagAxis.MaxBoundTicks,
+            imagAxis.TicksPerUnit, imagAxis.IsCyclic, imagAxis.CyclePeriodTicks);
+        var real = new Axis(realAxis.Name, +1, realAxis.MinBoundTicks, realAxis.MaxBoundTicks,
+            realAxis.TicksPerUnit, realAxis.IsCyclic, realAxis.CyclePeriodTicks);
+
+        return new CSpace("complex",
+            new[] { imag, real }, // unot first, unit second (matches Segment convention)
+            new[]
+            {
+                new AlgebraEntry(1, 1, 1, +1), // real*real → +real   (ac)
+                new AlgebraEntry(0, 0, 1, -1), // imag*imag → -real   (i²=-1)
+                new AlgebraEntry(1, 0, 0, +1), // real*imag → +imag   (ad)
+                new AlgebraEntry(0, 1, 0, +1), // imag*real → +imag   (bc)
+            }
+        );
+    }
+
+    /// <summary>
+    /// Create an orthogonal 2D grid frame from two forward-pointing axes.
+    /// "To make a 2 dimensional value with XY, we need two of these axes."
+    ///
+    /// No cross terms: axes are independent. Each axis multiplies only with itself.
+    /// Both axes are set to direction=+1 (orthogonal, not opposing).
+    /// </summary>
+    public static CSpace Grid(Axis xAxis, Axis yAxis)
+    {
+        var x = new Axis(xAxis.Name, +1, xAxis.MinBoundTicks, xAxis.MaxBoundTicks,
+            xAxis.TicksPerUnit, xAxis.IsCyclic, xAxis.CyclePeriodTicks);
+        var y = new Axis(yAxis.Name, +1, yAxis.MinBoundTicks, yAxis.MaxBoundTicks,
+            yAxis.TicksPerUnit, yAxis.IsCyclic, yAxis.CyclePeriodTicks);
+
+        return new CSpace("grid",
+            new[] { x, y },
+            new[]
+            {
+                new AlgebraEntry(0, 0, 0, +1), // x*x → x
+                new AlgebraEntry(1, 1, 1, +1), // y*y → y
+            }
+        );
+    }
+
+    // ================================================================
+    //  NAMED FACTORY METHODS — common frame types (preserved from original)
+    // ================================================================
+
+    /// <summary>
+    /// 1 axis, bounded. Algebra: value * value = value.
     /// Bounds are in value space; converted to ticks internally.
     /// </summary>
     public static CSpace Integer(double min = -1e15, double max = 1e15, long ticksPerUnit = 1)
@@ -117,7 +247,7 @@ public class CSpace
 
     /// <summary>
     /// 1 axis, bounded [0..1], variable resolution.
-    /// "30% of the way along a path" — the simplest complexity space
+    /// "30% of the way along a path" — the simplest frame
     /// with actual information (two fixed points + one variable).
     /// </summary>
     public static CSpace Proportion(int divisions = 1000)
@@ -129,17 +259,10 @@ public class CSpace
     }
 
     /// <summary>
-    /// 2 axes: unot (direction=-1, the "i" axis) and unit (direction=+1, the "1" axis).
+    /// 2 axes: unot (direction=-1) and unit (direction=+1).
     /// Algebra: complex multiplication.
-    ///
-    /// This IS the existing PRange system. The algebra table produces exactly the same
-    /// multiplication formula: (ac-bd, ad+bc).
-    ///
-    /// PRange.operator* line 154:
-    ///   new PRange(left.Start*right.End + left.End*right.Start,
-    ///              left.End*right.End   - left.Start*right.Start)
-    ///
-    /// Which is this table applied by the multiply loop.
+    /// "Football field style math: 2 units one pointing left one pointing right
+    ///  at the end points of a range."
     /// </summary>
     public static CSpace Segment(double min = -1e15, double max = 1e15, long ticksPerUnit = 1)
     {
@@ -151,16 +274,16 @@ public class CSpace
             },
             new[]
             {
-                new AlgebraEntry(1, 1, 1, +1), // unit×unit → +unit  (ac)
-                new AlgebraEntry(0, 0, 1, -1), // unot×unot → -unit  (-bd, i²=-1)
-                new AlgebraEntry(1, 0, 0, +1), // unit×unot → +unot  (ad)
-                new AlgebraEntry(0, 1, 0, +1), // unot×unit → +unot  (bc)
+                new AlgebraEntry(1, 1, 1, +1), // unit*unit → +unit  (ac)
+                new AlgebraEntry(0, 0, 1, -1), // unot*unot → -unit  (-bd, i²=-1)
+                new AlgebraEntry(1, 0, 0, +1), // unit*unot → +unot  (ad)
+                new AlgebraEntry(0, 1, 0, +1), // unot*unit → +unot  (bc)
             }
         );
     }
 
     /// <summary>
-    /// Same as segment, but the unot (i) axis is cyclic at 2π.
+    /// Same as segment, but the unot (i) axis is cyclic at 2pi.
     /// For rotation/angle quantities where the imaginary axis wraps.
     /// </summary>
     public static CSpace RotationalSegment(long ticksPerUnit = 1000)
@@ -185,8 +308,7 @@ public class CSpace
 
     /// <summary>
     /// 2 axes, but j² = +1 instead of i² = -1.
-    /// Different algebra → different math → different space.
-    /// Appears in special relativity (Minkowski metric).
+    /// Different algebra → different math. Appears in special relativity (Minkowski).
     /// </summary>
     public static CSpace SplitComplex(long ticksPerUnit = 1000)
     {
@@ -198,17 +320,17 @@ public class CSpace
             },
             new[]
             {
-                new AlgebraEntry(1, 1, 1, +1), // 1×1 → +1
-                new AlgebraEntry(0, 0, 1, +1), // j×j → +1  (NOT -1 like complex!)
-                new AlgebraEntry(1, 0, 0, +1), // 1×j → +j
-                new AlgebraEntry(0, 1, 0, +1), // j×1 → +j
+                new AlgebraEntry(1, 1, 1, +1), // 1*1 → +1
+                new AlgebraEntry(0, 0, 1, +1), // j*j → +1  (NOT -1 like complex!)
+                new AlgebraEntry(1, 0, 0, +1), // 1*j → +j
+                new AlgebraEntry(0, 1, 0, +1), // j*1 → +j
             }
         );
     }
 
     /// <summary>
-    /// 2 axes, ε² = 0 (nilpotent).
-    /// multiply(a+bε, c+dε) = ac + (ad+bc)ε. The ε² term vanishes.
+    /// 2 axes, epsilon² = 0 (nilpotent).
+    /// multiply(a+b*eps, c+d*eps) = ac + (ad+bc)*eps. The eps² term vanishes.
     /// Useful for automatic differentiation.
     /// </summary>
     public static CSpace DualNumber(long ticksPerUnit = 1000)
@@ -221,17 +343,17 @@ public class CSpace
             },
             new[]
             {
-                new AlgebraEntry(1, 1, 1, +1), // 1×1 → +1
-                new AlgebraEntry(0, 0, 1,  0), // ε×ε → 0  (nilpotent!)
-                new AlgebraEntry(1, 0, 0, +1), // 1×ε → +ε
-                new AlgebraEntry(0, 1, 0, +1), // ε×1 → +ε
+                new AlgebraEntry(1, 1, 1, +1), // 1*1 → +1
+                new AlgebraEntry(0, 0, 1,  0), // ε*ε → 0  (nilpotent!)
+                new AlgebraEntry(1, 0, 0, +1), // 1*ε → +ε
+                new AlgebraEntry(0, 1, 0, +1), // ε*1 → +ε
             }
         );
     }
 
     /// <summary>
     /// 4 axes: (1, i, j, k). i²=j²=k²=ijk=-1.
-    /// 16 algebra entries. Same multiply() function, just more entries.
+    /// 16 algebra entries.
     /// </summary>
     public static CSpace Quaternion(long ticksPerUnit = 1000)
     {
@@ -245,16 +367,16 @@ public class CSpace
             },
             new[]
             {
-                // 1×?
+                // 1*?
                 new AlgebraEntry(0, 0, 0, +1), new AlgebraEntry(0, 1, 1, +1),
                 new AlgebraEntry(0, 2, 2, +1), new AlgebraEntry(0, 3, 3, +1),
-                // i×?
+                // i*?
                 new AlgebraEntry(1, 0, 1, +1), new AlgebraEntry(1, 1, 0, -1),
                 new AlgebraEntry(1, 2, 3, +1), new AlgebraEntry(1, 3, 2, -1),
-                // j×?
+                // j*?
                 new AlgebraEntry(2, 0, 2, +1), new AlgebraEntry(2, 1, 3, -1),
                 new AlgebraEntry(2, 2, 0, -1), new AlgebraEntry(2, 3, 1, +1),
-                // k×?
+                // k*?
                 new AlgebraEntry(3, 0, 3, +1), new AlgebraEntry(3, 1, 2, +1),
                 new AlgebraEntry(3, 2, 1, -1), new AlgebraEntry(3, 3, 0, -1),
             }
@@ -262,19 +384,27 @@ public class CSpace
     }
 
     // ================================================================
-    //  CROSS-SPACE OPERATIONS
+    //  FRAME COMPOSITION — combine axes and frames
+    //  "I should be able to combine this frame with another left facing unit
+    //   to make a complex number, or an orthogonal unit to make an XY grid."
     // ================================================================
 
     /// <summary>
-    /// Merge two spaces into a higher-order space.
-    /// The cross algebra entries define how axes from the two original spaces
+    /// Combine this frame with another to create a higher-dimensional frame.
+    /// Optional cross algebra entries define how axes from the two original frames
     /// interact during multiplication.
-    ///
-    /// Without cross terms: the spaces are independent (just grouped).
-    /// With cross terms: they can multiply into each other.
-    ///
-    /// This is how you go from 1D lengths to 2D area, etc.
-    /// Generalizes what PolyDomain does with multiple Domains.
+    /// Without cross terms: the frames are independent (just grouped).
+    /// With cross terms: they can multiply into each other (e.g., area from length*width).
+    /// </summary>
+    public CSpace CombineWith(CSpace other, AlgebraEntry[]? crossAlgebra = null)
+    {
+        return Merge(this, other, crossAlgebra);
+    }
+
+    /// <summary>
+    /// Merge two frames into a higher-order frame.
+    /// "If we merge the XY axis together we get a single dimensional area,
+    ///  which is once again a single axis based on the size of the area."
     /// </summary>
     public static CSpace Merge(CSpace a, CSpace b, AlgebraEntry[]? crossAlgebra = null)
     {
@@ -296,7 +426,7 @@ public class CSpace
                 entry.Target + a.Dims,
                 entry.Sign));
 
-        // Cross-term algebra (caller specifies how the spaces interact)
+        // Cross-term algebra (caller specifies how the frames interact)
         if (crossAlgebra != null)
             mergedAlg.AddRange(crossAlgebra);
 
@@ -304,8 +434,8 @@ public class CSpace
     }
 
     /// <summary>
-    /// Project a value from this (higher) space into a lower-dimensional target space.
-    /// axisMap[i] = which axis in this space maps to axis i in the target.
+    /// Project a value from this (higher) frame into a lower-dimensional target frame.
+    /// axisMap[i] = which axis in this frame maps to axis i in the target.
     /// </summary>
     public static CValue Project(CValue val, CSpace target, int[] axisMap)
     {
@@ -316,9 +446,8 @@ public class CSpace
     }
 
     /// <summary>
-    /// Embed a value from a lower space into this (higher) space.
+    /// Embed a value from a lower frame into this (higher) frame.
     /// axisMap[i] = which axis in the target this value's axis i maps to.
-    /// defaults provides the tick values for unmapped axes.
     /// </summary>
     public static CValue Embed(CValue val, CSpace target, int[] axisMap, long[]? defaults = null)
     {
