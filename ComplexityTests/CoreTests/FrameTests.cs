@@ -283,6 +283,129 @@ public class FrameTests
     }
 
     // ================================================================
+    //  GRID ARITHMETIC — addition, subtraction, negation, multiplication
+    // ================================================================
+
+    [TestMethod]
+    public void GridFrame_SubtractionIsComponentWise()
+    {
+        var frame = CSpace.Grid(
+            Axis.Signed("x", 100, ticksPerUnit: 10),
+            Axis.Signed("y", 100, ticksPerUnit: 10));
+
+        var a = frame.Value(7.0, 3.0);
+        var b = frame.Value(2.0, 5.0);
+        var diff = a - b;
+
+        Assert.AreEqual(5.0, diff.GetValue(0), Utils.Tolerance);   // 7-2=5
+        Assert.AreEqual(-2.0, diff.GetValue(1), Utils.Tolerance);   // 3-5=-2
+    }
+
+    [TestMethod]
+    public void GridFrame_NegationNegatesBothAxes()
+    {
+        var frame = CSpace.Grid(
+            Axis.Signed("x", 100, ticksPerUnit: 10),
+            Axis.Signed("y", 100, ticksPerUnit: 10));
+
+        var a = frame.Value(3.0, 5.0);
+        var neg = -a;
+
+        Assert.AreEqual(-3.0, neg.GetValue(0), Utils.Tolerance);
+        Assert.AreEqual(-5.0, neg.GetValue(1), Utils.Tolerance);
+    }
+
+    [TestMethod]
+    public void GridFrame_ScalarMultiplication()
+    {
+        var frame = CSpace.Grid(
+            Axis.Forward("x", 100, ticksPerUnit: 10),
+            Axis.Forward("y", 100, ticksPerUnit: 10));
+
+        var a = frame.Value(3.0, 4.0);
+        var scaled = a * 2.5;
+
+        Assert.AreEqual(7.5, scaled.GetValue(0), Utils.Tolerance);
+        Assert.AreEqual(10.0, scaled.GetValue(1), Utils.Tolerance);
+    }
+
+    [TestMethod]
+    public void GridFrame_NoCrossTerms()
+    {
+        // Grid multiplication: x*x → x, y*y → y, no x*y cross terms.
+        // This means (a,b) * (c,d) = (a*c, b*d) — independent per axis.
+        var frame = CSpace.Grid(
+            Axis.Forward("x", 100, ticksPerUnit: 10),
+            Axis.Forward("y", 100, ticksPerUnit: 10));
+
+        var a = frame.Value(3.0, 0.0);  // purely in x
+        var b = frame.Value(0.0, 4.0);  // purely in y
+        var product = a * b;
+
+        // No cross terms: 3*0=0 and 0*4=0
+        Assert.AreEqual(0.0, product.GetValue(0), Utils.Tolerance);
+        Assert.AreEqual(0.0, product.GetValue(1), Utils.Tolerance);
+    }
+
+    [TestMethod]
+    public void GridFrame_MultipleValuesInFrame()
+    {
+        var frame = CSpace.Grid(
+            Axis.Signed("x", 100, ticksPerUnit: 100),
+            Axis.Signed("y", 100, ticksPerUnit: 100));
+
+        frame.CreateValue(1.0, 2.0);
+        frame.CreateValue(3.0, 4.0);
+        frame.CreateValue(-5.0, 7.5);
+
+        Assert.AreEqual(3, frame.Values.Count);
+        Assert.AreEqual(1.0, frame.Values[0].GetValue(0), Utils.Tolerance);
+        Assert.AreEqual(7.5, frame.Values[2].GetValue(1), Utils.Tolerance);
+    }
+
+    [TestMethod]
+    public void GridFrame_DistanceBetweenPoints()
+    {
+        var frame = CSpace.Grid(
+            Axis.Signed("x", 100, ticksPerUnit: 100),
+            Axis.Signed("y", 100, ticksPerUnit: 100));
+
+        var a = frame.Value(0.0, 0.0);
+        var b = frame.Value(3.0, 4.0);
+
+        double dist = CValue.Distance(a, b);
+        Assert.AreEqual(5.0, dist, Utils.Tolerance); // 3-4-5 triangle
+    }
+
+    // ================================================================
+    //  SEGMENT ARITHMETIC — matches what the viewer renders
+    // ================================================================
+
+    [TestMethod]
+    public void SegmentAddition_MatchesViewerDemo()
+    {
+        // A = (unot=1, unit=4), B = (unot=1, unit=2), A+B = (2, 6)
+        var seg = CSpace.Segment(min: -6, max: 12, ticksPerUnit: 100);
+        var A = seg.Value(1.0, 4.0);
+        var B = seg.Value(1.0, 2.0);
+        var sum = A + B;
+
+        Assert.AreEqual(2.0, sum.UnotValue, Utils.Tolerance);
+        Assert.AreEqual(6.0, sum.UnitValue, Utils.Tolerance);
+    }
+
+    [TestMethod]
+    public void SegmentNegation_MatchesViewerDemo()
+    {
+        var seg = CSpace.Segment(min: -6, max: 12, ticksPerUnit: 100);
+        var A = seg.Value(1.0, 4.0);
+        var negA = -A;
+
+        Assert.AreEqual(-1.0, negA.UnotValue, Utils.Tolerance);
+        Assert.AreEqual(-4.0, negA.UnitValue, Utils.Tolerance);
+    }
+
+    // ================================================================
     //  FRAME COMPOSITION — CombineWith
     //  "I should be able to combine this frame with another"
     // ================================================================
