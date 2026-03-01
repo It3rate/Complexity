@@ -457,4 +457,104 @@ public class CValueTests
         Assert.AreEqual(3.5, values[0], Utils.Tolerance);
         Assert.AreEqual(7.2, values[1], Utils.Tolerance);
     }
+
+    // ================================================================
+    //  METRIC-AWARE DISTANCE — Euclidean / Manhattan / Chebyshev
+    //  Distance() reads MetricKind from the space.
+    // ================================================================
+
+    private static CSpace MakeGridSpace(MetricKind metric)
+    {
+        return new CSpace("grid",
+            new[] { Axis.Signed("x", 100, ticksPerUnit: 10), Axis.Signed("y", 100, ticksPerUnit: 10) },
+            new[] { new AlgebraEntry(0, 0, 0, +1), new AlgebraEntry(1, 1, 1, +1) },
+            metric: metric);
+    }
+
+    [TestMethod]
+    public void Distance_Euclidean_TwoDimensions()
+    {
+        // Point A=(0,0), B=(3,4) → Euclidean distance = 5 (the classic 3-4-5 triangle)
+        var space = MakeGridSpace(MetricKind.Euclidean);
+        var a = space.Value(0.0, 0.0);
+        var b = space.Value(3.0, 4.0);
+        Assert.AreEqual(5.0, CValue.Distance(a, b), Utils.Tolerance);
+    }
+
+    [TestMethod]
+    public void Distance_Manhattan_TwoDimensions()
+    {
+        // Point A=(0,0), B=(3,4) → Manhattan distance = |3| + |4| = 7
+        var space = MakeGridSpace(MetricKind.Manhattan);
+        var a = space.Value(0.0, 0.0);
+        var b = space.Value(3.0, 4.0);
+        Assert.AreEqual(7.0, CValue.Distance(a, b), Utils.Tolerance);
+    }
+
+    [TestMethod]
+    public void Distance_Chebyshev_TwoDimensions()
+    {
+        // Point A=(0,0), B=(3,4) → Chebyshev distance = max(|3|, |4|) = 4
+        var space = MakeGridSpace(MetricKind.Chebyshev);
+        var a = space.Value(0.0, 0.0);
+        var b = space.Value(3.0, 4.0);
+        Assert.AreEqual(4.0, CValue.Distance(a, b), Utils.Tolerance);
+    }
+
+    [TestMethod]
+    public void Distance_AllMetrics_AgreeWhenEqual()
+    {
+        // All three metrics must return 0 for a point vs itself
+        var eu = MakeGridSpace(MetricKind.Euclidean).Value(5.0, 7.0);
+        var mn = MakeGridSpace(MetricKind.Manhattan).Value(5.0, 7.0);
+        var ch = MakeGridSpace(MetricKind.Chebyshev).Value(5.0, 7.0);
+
+        Assert.AreEqual(0.0, CValue.Distance(eu, MakeGridSpace(MetricKind.Euclidean).Value(5.0, 7.0)), Utils.Tolerance);
+        Assert.AreEqual(0.0, CValue.Distance(mn, MakeGridSpace(MetricKind.Manhattan).Value(5.0, 7.0)), Utils.Tolerance);
+        Assert.AreEqual(0.0, CValue.Distance(ch, MakeGridSpace(MetricKind.Chebyshev).Value(5.0, 7.0)), Utils.Tolerance);
+    }
+
+    [TestMethod]
+    public void Distance_Symmetric()
+    {
+        // Distance(a, b) == Distance(b, a) for all metrics
+        var space = MakeGridSpace(MetricKind.Euclidean);
+        var a = space.Value(1.0, 2.0);
+        var b = space.Value(5.0, 6.0);
+        Assert.AreEqual(CValue.Distance(a, b), CValue.Distance(b, a), Utils.Tolerance);
+    }
+
+    // ================================================================
+    //  CYCLIC AXIS DISTANCE — shortest-arc
+    // ================================================================
+
+    [TestMethod]
+    public void Distance_CyclicAxis_ShortestArcGoesShortWay()
+    {
+        // Angle space: 0..360 cyclic
+        // 350° to 10° should be 20° (short way), not 340° (long way)
+        var angleSpace = CSpace.FromAxis(Axis.Cyclic("angle", 360.0, ticksPerUnit: 10));
+        var a = angleSpace.Value(350.0);
+        var b = angleSpace.Value(10.0);
+        Assert.AreEqual(20.0, CValue.Distance(a, b), 0.1);
+    }
+
+    [TestMethod]
+    public void Distance_CyclicAxis_ZeroToHalfPeriod()
+    {
+        // At exactly half a cycle, both directions are equal — distance = period/2
+        var angleSpace = CSpace.FromAxis(Axis.Cyclic("angle", 360.0, ticksPerUnit: 10));
+        var zero = angleSpace.Value(0.0);
+        var half = angleSpace.Value(180.0);
+        Assert.AreEqual(180.0, CValue.Distance(zero, half), 0.1);
+    }
+
+    [TestMethod]
+    public void Distance_CyclicAxis_SamePoint_IsZero()
+    {
+        var modSpace = CSpace.Modular(12);
+        var a = modSpace.Value(7.0);
+        var b = modSpace.Value(7.0);
+        Assert.AreEqual(0.0, CValue.Distance(a, b), Utils.Tolerance);
+    }
 }

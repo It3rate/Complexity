@@ -161,4 +161,88 @@ public class AxisTests
         Assert.IsTrue(str.Contains("+"), $"Expected '+' in '{str}'");
         Assert.IsTrue(str.Contains("tpu=10"), $"Expected 'tpu=10' in '{str}'");
     }
+
+    // ================================================================
+    //  AXIS KIND — semantic metadata
+    // ================================================================
+
+    [TestMethod]
+    public void Axis_DefaultKindIsSpatial()
+    {
+        // All factory methods default to Spatial — the most common case
+        var fwd  = Axis.Forward("x", 100);
+        var bwd  = Axis.Backward("neg", 100);
+        var sgn  = Axis.Signed("s", 50);
+        var unbd = Axis.Unbounded("u", +1);
+        var cyc  = Axis.Cyclic("angle", 360);
+
+        Assert.AreEqual(AxisKind.Spatial, fwd.Kind);
+        Assert.AreEqual(AxisKind.Spatial, bwd.Kind);
+        Assert.AreEqual(AxisKind.Spatial, sgn.Kind);
+        Assert.AreEqual(AxisKind.Spatial, unbd.Kind);
+        Assert.AreEqual(AxisKind.Spatial, cyc.Kind);
+    }
+
+    [TestMethod]
+    public void Axis_KindCanBeSetOnFactory()
+    {
+        // Caller can override the default kind on any factory method
+        var time = Axis.Forward("t", 100, kind: AxisKind.Temporal);
+        Assert.AreEqual(AxisKind.Temporal, time.Kind);
+
+        var brightness = Axis.Signed("lum", 1.0, kind: AxisKind.Intensity);
+        Assert.AreEqual(AxisKind.Intensity, brightness.Kind);
+
+        var rank = Axis.Forward("rank", 10, ticksPerUnit: 1, kind: AxisKind.Ordinal);
+        Assert.AreEqual(AxisKind.Ordinal, rank.Kind);
+    }
+
+    [TestMethod]
+    public void Axis_KindCanBeSetOnConstructors()
+    {
+        // Double-bounds constructor
+        var ax1 = new Axis("t", +1, 0.0, 100.0, ticksPerUnit: 10, kind: AxisKind.Temporal);
+        Assert.AreEqual(AxisKind.Temporal, ax1.Kind);
+
+        // Tick-bounds constructor
+        var ax2 = new Axis("t", +1, 0L, 1000L, 10L, kind: AxisKind.Temporal);
+        Assert.AreEqual(AxisKind.Temporal, ax2.Kind);
+    }
+
+    [TestMethod]
+    public void CyclicTemporalAxis_IsValidCombination()
+    {
+        // A cyclic temporal axis is perfectly valid — e.g. a day-of-week counter
+        var dayOfWeek = Axis.Cyclic("day", 7, ticksPerUnit: 1, kind: AxisKind.Temporal);
+        Assert.IsTrue(dayOfWeek.IsCyclic);
+        Assert.AreEqual(AxisKind.Temporal, dayOfWeek.Kind);
+        Assert.AreEqual(7.0, dayOfWeek.CyclePeriod, Utils.Tolerance);
+    }
+
+    [TestMethod]
+    public void Axis_KindAppearsInToString()
+    {
+        var axis = Axis.Forward("t", 10, kind: AxisKind.Temporal);
+        var str = axis.ToString();
+        Assert.IsTrue(str.Contains("Temporal"), $"Expected 'Temporal' in '{str}'");
+    }
+
+    [TestMethod]
+    public void Axis_KindDoesNotAffectArithmetic()
+    {
+        // Two axes differing only in Kind should produce the same arithmetic in a CSpace
+        var spatialX = Axis.Signed("x", 10, ticksPerUnit: 10, kind: AxisKind.Spatial);
+        var temporalX = Axis.Signed("x", 10, ticksPerUnit: 10, kind: AxisKind.Temporal);
+
+        var spatialSpace = CSpace.FromAxis(spatialX);
+        var temporalSpace = CSpace.FromAxis(temporalX);
+
+        var a = spatialSpace.Value(3.0);
+        var b = spatialSpace.Value(2.0);
+        var ta = temporalSpace.Value(3.0);
+        var tb = temporalSpace.Value(2.0);
+
+        // Addition result (ticks) is the same regardless of Kind
+        Assert.AreEqual((a + b).Components[0], (ta + tb).Components[0]);
+    }
 }

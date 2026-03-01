@@ -190,4 +190,206 @@ public class CSpaceTests
         var space = CSpace.Segment(-100, 100, ticksPerUnit: 100);
         Assert.AreEqual(100L, space.BasisTicks);
     }
+
+    // ================================================================
+    //  AFFINE KIND — Position vs Vector
+    // ================================================================
+
+    [TestMethod]
+    public void CSpace_DefaultAffineTypeIsVector()
+    {
+        // All factory methods default to Vector — most frames work with displacements
+        Assert.AreEqual(AffineKind.Vector, CSpace.Integer().AffineType);
+        Assert.AreEqual(AffineKind.Vector, CSpace.Segment().AffineType);
+        Assert.AreEqual(AffineKind.Vector, CSpace.Modular(12).AffineType);
+        Assert.AreEqual(AffineKind.Vector, CSpace.Proportion().AffineType);
+    }
+
+    [TestMethod]
+    public void CSpace_AffineTypeCanBeSetOnConstructor()
+    {
+        var space = new CSpace("xy", new[] { Axis.Signed("x", 10), Axis.Signed("y", 10) },
+            new[] { new AlgebraEntry(0, 0, 0, +1), new AlgebraEntry(1, 1, 1, +1) },
+            affineType: AffineKind.Position);
+        Assert.AreEqual(AffineKind.Position, space.AffineType);
+    }
+
+    [TestMethod]
+    public void ResultAffineKind_VectorPlusVector_IsVector()
+    {
+        var result = CSpace.ResultAffineKind(AffineKind.Vector, AffineKind.Vector, isSubtraction: false);
+        Assert.AreEqual(AffineKind.Vector, result);
+    }
+
+    [TestMethod]
+    public void ResultAffineKind_PositionPlusVector_IsPosition()
+    {
+        var result = CSpace.ResultAffineKind(AffineKind.Position, AffineKind.Vector, isSubtraction: false);
+        Assert.AreEqual(AffineKind.Position, result);
+    }
+
+    [TestMethod]
+    public void ResultAffineKind_VectorPlusPosition_IsPosition()
+    {
+        var result = CSpace.ResultAffineKind(AffineKind.Vector, AffineKind.Position, isSubtraction: false);
+        Assert.AreEqual(AffineKind.Position, result);
+    }
+
+    [TestMethod]
+    public void ResultAffineKind_PositionPlusPosition_IsInvalid()
+    {
+        // Adding two absolute positions has no geometric meaning
+        var result = CSpace.ResultAffineKind(AffineKind.Position, AffineKind.Position, isSubtraction: false);
+        Assert.IsNull(result);
+    }
+
+    [TestMethod]
+    public void ResultAffineKind_PositionMinusPosition_IsVector()
+    {
+        // The difference between two positions is a displacement vector
+        var result = CSpace.ResultAffineKind(AffineKind.Position, AffineKind.Position, isSubtraction: true);
+        Assert.AreEqual(AffineKind.Vector, result);
+    }
+
+    [TestMethod]
+    public void ResultAffineKind_PositionMinusVector_IsPosition()
+    {
+        var result = CSpace.ResultAffineKind(AffineKind.Position, AffineKind.Vector, isSubtraction: true);
+        Assert.AreEqual(AffineKind.Position, result);
+    }
+
+    [TestMethod]
+    public void ResultAffineKind_VectorMinusPosition_IsInvalid()
+    {
+        // Subtracting a position from a vector has no geometric meaning
+        var result = CSpace.ResultAffineKind(AffineKind.Vector, AffineKind.Position, isSubtraction: true);
+        Assert.IsNull(result);
+    }
+
+    // ================================================================
+    //  CHIRALITY
+    // ================================================================
+
+    [TestMethod]
+    public void CSpace_DefaultChiralityIsPositive()
+    {
+        Assert.AreEqual(+1, CSpace.Integer().Chirality);
+        Assert.AreEqual(+1, CSpace.Segment().Chirality);
+        Assert.AreEqual(+1, CSpace.Quaternion().Chirality);
+    }
+
+    [TestMethod]
+    public void DeriveChirality_1D_IsAlwaysPositive()
+    {
+        // 1D spaces have no chirality concept — always returns +1
+        var algebra = new[] { new AlgebraEntry(0, 0, 0, +1) };
+        Assert.AreEqual(+1, CSpace.DeriveChirality(algebra, 1));
+    }
+
+    [TestMethod]
+    public void DeriveChirality_ComplexSpace_IsRightHanded()
+    {
+        // Complex multiplication: unit*unot → +unot (first cross-term has positive sign)
+        var complexAlgebra = CSpace.Segment().Algebra;
+        Assert.AreEqual(+1, CSpace.DeriveChirality(complexAlgebra, 2));
+    }
+
+    [TestMethod]
+    public void Mirror_FlipsChirality()
+    {
+        var space = CSpace.Segment();
+        Assert.AreEqual(+1, space.Chirality);
+
+        var mirrored = space.Mirror(0); // flip the unot axis
+        Assert.AreEqual(-1, mirrored.Chirality);
+
+        var doubleMirrored = mirrored.Mirror(0);
+        Assert.AreEqual(+1, doubleMirrored.Chirality);
+    }
+
+    [TestMethod]
+    public void Mirror_PreservesArithmetic_ForEvenFlips()
+    {
+        // Mirroring twice should restore arithmetic to the original
+        var space = CSpace.Segment(-10, 10, ticksPerUnit: 10);
+        var orig = space.Value(2.0, 5.0);
+
+        var twice = space.Mirror(0).Mirror(0);
+        var copy = new CValue(twice, orig.Components);
+        Assert.AreEqual(orig.GetValue(0), copy.GetValue(0), Utils.Tolerance);
+        Assert.AreEqual(orig.GetValue(1), copy.GetValue(1), Utils.Tolerance);
+    }
+
+    [TestMethod]
+    public void Mirror_ChangesAxisDirection()
+    {
+        var space = CSpace.Integer(-10, 10);
+        Assert.AreEqual(+1, space.Axes[0].Direction);
+
+        var mirrored = space.Mirror(0);
+        Assert.AreEqual(-1, mirrored.Axes[0].Direction);
+    }
+
+    // ================================================================
+    //  METRIC KIND
+    // ================================================================
+
+    [TestMethod]
+    public void CSpace_DefaultMetricIsEuclidean()
+    {
+        Assert.AreEqual(MetricKind.Euclidean, CSpace.Integer().Metric);
+        Assert.AreEqual(MetricKind.Euclidean, CSpace.Segment().Metric);
+    }
+
+    [TestMethod]
+    public void CSpace_MetricCanBeSetOnConstructor()
+    {
+        var space = new CSpace("grid",
+            new[] { Axis.Signed("x", 10), Axis.Signed("y", 10) },
+            new[] { new AlgebraEntry(0, 0, 0, +1), new AlgebraEntry(1, 1, 1, +1) },
+            metric: MetricKind.Manhattan);
+        Assert.AreEqual(MetricKind.Manhattan, space.Metric);
+    }
+
+    // ================================================================
+    //  TOSTRING — includes new properties
+    // ================================================================
+
+    [TestMethod]
+    public void CSpace_ToStringIncludesNewProperties()
+    {
+        var space = CSpace.Segment();
+        var str = space.ToString();
+        Assert.IsTrue(str.Contains("Vector"),   $"Expected 'Vector' in '{str}'");
+        Assert.IsTrue(str.Contains("Euclidean"), $"Expected 'Euclidean' in '{str}'");
+    }
+
+    // ================================================================
+    //  AXIS KIND PRESERVED THROUGH COMPLEX / GRID FACTORIES
+    // ================================================================
+
+    [TestMethod]
+    public void Complex_PreservesAxisKindFromInput()
+    {
+        var realAxis = Axis.Signed("real", 10, kind: AxisKind.Spatial);
+        var imagAxis = Axis.Signed("imag", 10, kind: AxisKind.Intensity);
+        var space = CSpace.Complex(realAxis, imagAxis);
+
+        // Both axes should retain their Kind values
+        var unitAxis = space.Axes.First(a => a.Direction == +1);
+        var unotAxis = space.Axes.First(a => a.Direction == -1);
+        Assert.AreEqual(AxisKind.Spatial,   unitAxis.Kind);
+        Assert.AreEqual(AxisKind.Intensity, unotAxis.Kind);
+    }
+
+    [TestMethod]
+    public void Grid_PreservesAxisKindFromInput()
+    {
+        var xAxis = Axis.Signed("x", 10, kind: AxisKind.Spatial);
+        var yAxis = Axis.Signed("y", 10, kind: AxisKind.Temporal);
+        var space = CSpace.Grid(xAxis, yAxis);
+
+        Assert.AreEqual(AxisKind.Spatial,  space.Axes[0].Kind);
+        Assert.AreEqual(AxisKind.Temporal, space.Axes[1].Kind);
+    }
 }

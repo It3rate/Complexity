@@ -24,6 +24,9 @@ namespace Complexity.Core;
 /// - Two axes (forward + backward) → segments/complex numbers ("football field" math)
 /// - Two orthogonal axes → XY grid / 2D coordinates
 /// - Four axes → quaternions
+///
+/// Semantic metadata (Kind) lives here alongside the mathematical structure.
+/// Kind does not affect arithmetic — it guides interpretation and collection operations.
 /// </summary>
 public struct Axis
 {
@@ -50,6 +53,14 @@ public struct Axis
     /// <summary> Cycle period in ticks. 0 = not cyclic. </summary>
     public long CyclePeriodTicks { get; set; }
 
+    /// <summary>
+    /// What physical or conceptual quantity this axis measures.
+    /// Does not affect arithmetic — semantic metadata used by CCollection inference.
+    /// Spatial = position/length (default). Temporal = time/sequence.
+    /// Intensity = scalar quality. Ordinal = rank/category.
+    /// </summary>
+    public AxisKind Kind { get; set; }
+
     public bool HasMinBound => MinBoundTicks != long.MinValue;
     public bool HasMaxBound => MaxBoundTicks != long.MaxValue;
 
@@ -72,7 +83,8 @@ public struct Axis
     /// </summary>
     public Axis(string name, int direction,
         double minBound = double.NaN, double maxBound = double.NaN,
-        long ticksPerUnit = 1, bool isCyclic = false, double cyclePeriod = 0.0)
+        long ticksPerUnit = 1, bool isCyclic = false, double cyclePeriod = 0.0,
+        AxisKind kind = AxisKind.Spatial)
     {
         Name = name;
         Direction = direction;
@@ -81,6 +93,7 @@ public struct Axis
         MaxBoundTicks = double.IsNaN(maxBound) ? long.MaxValue : (long)(maxBound * ticksPerUnit);
         IsCyclic = isCyclic;
         CyclePeriodTicks = (long)(cyclePeriod * ticksPerUnit);
+        Kind = kind;
     }
 
     /// <summary>
@@ -89,7 +102,8 @@ public struct Axis
     /// </summary>
     public Axis(string name, int direction,
         long minBoundTicks, long maxBoundTicks,
-        long ticksPerUnit, bool isCyclic = false, long cyclePeriodTicks = 0)
+        long ticksPerUnit, bool isCyclic = false, long cyclePeriodTicks = 0,
+        AxisKind kind = AxisKind.Spatial)
     {
         Name = name;
         Direction = direction;
@@ -98,6 +112,7 @@ public struct Axis
         MaxBoundTicks = maxBoundTicks;
         IsCyclic = isCyclic;
         CyclePeriodTicks = cyclePeriodTicks;
+        Kind = kind;
     }
 
     // ================================================================
@@ -109,16 +124,18 @@ public struct Axis
     /// This is the simplest axis: one direction from zero to a maximum.
     /// Example: Forward("value", 100, 10) creates 0..1000 ticks (0..100 value-space)
     /// </summary>
-    public static Axis Forward(string name, double maxValue, long ticksPerUnit = 1) =>
-        new Axis(name, +1, 0, maxValue, ticksPerUnit: ticksPerUnit);
+    public static Axis Forward(string name, double maxValue, long ticksPerUnit = 1,
+        AxisKind kind = AxisKind.Spatial) =>
+        new Axis(name, +1, 0, maxValue, ticksPerUnit: ticksPerUnit, kind: kind);
 
     /// <summary>
     /// A backward/left-facing axis (direction = -1) from zero to max with given resolution.
     /// Used as the imaginary/unot axis in segment/complex number frames.
     /// "Football field" math uses one forward and one backward unit at endpoints of a range.
     /// </summary>
-    public static Axis Backward(string name, double maxValue, long ticksPerUnit = 1) =>
-        new Axis(name, -1, 0, maxValue, ticksPerUnit: ticksPerUnit);
+    public static Axis Backward(string name, double maxValue, long ticksPerUnit = 1,
+        AxisKind kind = AxisKind.Spatial) =>
+        new Axis(name, -1, 0, maxValue, ticksPerUnit: ticksPerUnit, kind: kind);
 
     /// <summary>
     /// A signed axis spanning -maxValue to +maxValue.
@@ -126,23 +143,27 @@ public struct Axis
     /// "To make a negative number we need a full positive and negative range
     ///  and a single positive unit."
     /// </summary>
-    public static Axis Signed(string name, double maxValue, long ticksPerUnit = 1) =>
-        new Axis(name, +1, -maxValue, maxValue, ticksPerUnit: ticksPerUnit);
+    public static Axis Signed(string name, double maxValue, long ticksPerUnit = 1,
+        AxisKind kind = AxisKind.Spatial) =>
+        new Axis(name, +1, -maxValue, maxValue, ticksPerUnit: ticksPerUnit, kind: kind);
 
     /// <summary>
     /// An unbounded axis (no limits) with given resolution and direction.
     /// MinBound = long.MinValue, MaxBound = long.MaxValue.
     /// </summary>
-    public static Axis Unbounded(string name, int direction, long ticksPerUnit = 1) =>
-        new Axis(name, direction, long.MinValue, long.MaxValue, ticksPerUnit, false, 0);
+    public static Axis Unbounded(string name, int direction, long ticksPerUnit = 1,
+        AxisKind kind = AxisKind.Spatial) =>
+        new Axis(name, direction, long.MinValue, long.MaxValue, ticksPerUnit, false, 0, kind);
 
     /// <summary>
     /// A cyclic axis that wraps at the given period.
     /// For clock arithmetic, angles, modular math.
     /// </summary>
-    public static Axis Cyclic(string name, double period, long ticksPerUnit = 1) =>
-        new Axis(name, +1, 0, period, ticksPerUnit: ticksPerUnit, isCyclic: true, cyclePeriod: period);
+    public static Axis Cyclic(string name, double period, long ticksPerUnit = 1,
+        AxisKind kind = AxisKind.Spatial) =>
+        new Axis(name, +1, 0, period, ticksPerUnit: ticksPerUnit,
+            isCyclic: true, cyclePeriod: period, kind: kind);
 
     public override string ToString() =>
-        $"{Name}({(Direction == 1 ? "+" : "-")}, [{(HasMinBound ? MinBound.ToString("0.##") : "?")}..{(HasMaxBound ? MaxBound.ToString("0.##") : "?")}], tpu={TicksPerUnit})";
+        $"{Name}({(Direction == 1 ? "+" : "-")}, [{(HasMinBound ? MinBound.ToString("0.##") : "?")}..{(HasMaxBound ? MaxBound.ToString("0.##") : "?")}], tpu={TicksPerUnit}, {Kind})";
 }

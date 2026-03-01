@@ -520,22 +520,70 @@ public struct CValue : IEquatable<CValue>
     public CValue NormalizeTo(CValue target) => Normalize() * target;
 
     // ================================================================
-    //  DISTANCE — returns evaluated double
+    //  DISTANCE — metric-aware, cyclic-aware
     // ================================================================
 
     /// <summary>
     /// Distance between two values in the same frame.
-    /// Computed in value-space (evaluated doubles) for meaningful comparison.
+    /// Uses the space's MetricKind (Euclidean, Manhattan, or Chebyshev).
+    /// Cyclic axes always use the shortest-arc difference, regardless of metric:
+    /// e.g. angle 350° is 20° away from 10°, not 340°.
     /// </summary>
     public static double Distance(CValue a, CValue b)
+    {
+        return a.Space.Metric switch
+        {
+            MetricKind.Manhattan => ManhattanDistance(a, b),
+            MetricKind.Chebyshev => ChebyshevDistance(a, b),
+            _                    => EuclideanDistance(a, b),
+        };
+    }
+
+    /// <summary>
+    /// Per-axis component difference in value-space, respecting cyclic axes.
+    /// For a cyclic axis the result is the shortest-arc difference:
+    /// always in the range [-period/2, +period/2].
+    /// </summary>
+    private static double AxisDiff(CValue a, CValue b, int i)
+    {
+        double d = a.GetValue(i) - b.GetValue(i);
+        var ax = a.Space.Axes[i];
+        if (ax.IsCyclic && ax.CyclePeriod > 0)
+        {
+            double p = ax.CyclePeriod;
+            // Map d into (-p, p), then choose the shorter arc
+            d = d % p;
+            if (d >  p / 2) d -= p;
+            if (d < -p / 2) d += p;
+        }
+        return d;
+    }
+
+    private static double EuclideanDistance(CValue a, CValue b)
     {
         double sum = 0;
         for (int i = 0; i < a.Space.Dims; i++)
         {
-            double d = a.GetValue(i) - b.GetValue(i);
+            double d = AxisDiff(a, b, i);
             sum += d * d;
         }
         return Math.Sqrt(sum);
+    }
+
+    private static double ManhattanDistance(CValue a, CValue b)
+    {
+        double sum = 0;
+        for (int i = 0; i < a.Space.Dims; i++)
+            sum += Math.Abs(AxisDiff(a, b, i));
+        return sum;
+    }
+
+    private static double ChebyshevDistance(CValue a, CValue b)
+    {
+        double max = 0;
+        for (int i = 0; i < a.Space.Dims; i++)
+            max = Math.Max(max, Math.Abs(AxisDiff(a, b, i)));
+        return max;
     }
 
     // ================================================================
