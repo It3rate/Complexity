@@ -525,6 +525,62 @@ public class CValue : IEquatable<CValue>
     public CValue NormalizeTo(CValue target) => Normalize() * target;
 
     // ================================================================
+    //  SUB-SPACE — promote this value to a frame for new values
+    // ================================================================
+
+    /// <summary>
+    /// Use this value as a frame (sub-space) for new values.
+    ///
+    /// The sub-space has the same axes, algebra, AffineType, Chirality, Metric,
+    /// and TicksPerUnit as the parent. The only change is that each axis's bounds
+    /// are set to [min(Components), max(Components)] in ticks — i.e., the range
+    /// spanned by this value's tick components.
+    ///
+    /// Sub-spaces share the same coordinate system as their parent:
+    /// a child value at tick position 5 IS at position 5 in the parent.
+    /// The tighter bounds create a two-level tension system:
+    ///   - High tension in the sub-space → value outside the expected range
+    ///   - Zero tension in the parent    → still within capability
+    ///
+    /// Example: parent segment [-100, +100]; value [-3, +6].
+    ///   sub-space bounds = [-3, +6].
+    ///   child value at +8: sub-tension 2 units, parent tension 0.
+    ///   "outside the expectation, but not outside the capability."
+    ///
+    /// An optional name overrides the auto-generated sub-space name.
+    /// Throws if this value is invalid.
+    /// </summary>
+    public CSpace ToSubSpace(string? name = null)
+    {
+        if (!IsValid)
+            throw new InvalidOperationException("Cannot create a sub-space from an invalid CValue.");
+
+        // Compute the tick range across all components
+        long minTicks = Components[0];
+        long maxTicks = Components[0];
+        for (int i = 1; i < Components.Length; i++)
+        {
+            if (Components[i] < minTicks) minTicks = Components[i];
+            if (Components[i] > maxTicks) maxTicks = Components[i];
+        }
+
+        // Build new axes: same structure, new bounds
+        var newAxes = new Axis[Space.Dims];
+        for (int i = 0; i < Space.Dims; i++)
+        {
+            var ax = Space.Axes[i];
+            newAxes[i] = new Axis(ax.Name, ax.Direction,
+                minTicks, maxTicks,
+                ax.TicksPerUnit, ax.IsCyclic, ax.CyclePeriodTicks, ax.Kind);
+        }
+
+        string subName = name ?? $"{Space.Name}[{ToString()}]";
+        return new CSpace(subName, newAxes, (AlgebraEntry[])Space.Algebra.Clone(),
+            Space.AffineType, Space.Chirality, Space.Metric,
+            parent: Space, origin: this);
+    }
+
+    // ================================================================
     //  DISTANCE — metric-aware, cyclic-aware
     // ================================================================
 

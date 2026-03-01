@@ -24,6 +24,12 @@ namespace Complexity.Core;
 /// (AffineType), document handedness convention (Chirality), and select the
 /// distance function used by Distance() and collection operations (Metric).
 ///
+/// Sub-spaces: any CValue can act as a frame via CValue.ToSubSpace().
+/// The sub-space has the same coordinate system (same ticks, same units) as
+/// the parent but with axis bounds set to the value's component range.
+/// Values in a sub-space can overflow the sub-space bounds while remaining
+/// within the parent's bounds — a two-level tension system.
+///
 /// All values in this frame are stored as longs (ticks).
 /// Resolution comes from TicksPerUnit on each axis.
 /// Values are longs until evaluated — evaluation converts ticks to doubles
@@ -66,6 +72,42 @@ public class CSpace
     /// </summary>
     public List<CValue> Values { get; } = new();
 
+    // ================================================================
+    //  NESTED FRAME LINKAGE
+    //  Any CValue can promote itself to a sub-space via CValue.ToSubSpace().
+    //  Sub-spaces share the same coordinate system (same ticks, same units)
+    //  but have tighter axis bounds. This enables layered tension:
+    //  a value can overflow its sub-space while remaining within the parent.
+    // ================================================================
+
+    /// <summary>
+    /// The parent frame this sub-space was derived from.
+    /// Null for root spaces (spaces not created via CValue.ToSubSpace()).
+    /// </summary>
+    public CSpace? Parent { get; }
+
+    /// <summary>
+    /// The CValue in Parent whose tick components defined this sub-space's bounds.
+    /// Null for root spaces.
+    /// </summary>
+    public CValue? Origin { get; }
+
+    /// <summary> True when this space was created by CValue.ToSubSpace(). </summary>
+    public bool IsSubSpace => Parent != null;
+
+    /// <summary>
+    /// Nesting depth: 0 for root spaces, 1 for immediate sub-spaces, etc.
+    /// Computed once at construction by walking the parent chain.
+    /// </summary>
+    public int Depth { get; }
+
+    /// <summary>
+    /// The root ancestor of this space (the outermost, user-created frame).
+    /// Returns itself when Depth == 0.
+    /// Computed once at construction.
+    /// </summary>
+    public CSpace Root { get; }
+
     public int Dims => Axes.Length;
 
     /// <summary>
@@ -77,7 +119,9 @@ public class CSpace
     public CSpace(string name, Axis[] axes, AlgebraEntry[] algebra,
         AffineKind affineType = AffineKind.Vector,
         int chirality = +1,
-        MetricKind metric = MetricKind.Euclidean)
+        MetricKind metric = MetricKind.Euclidean,
+        CSpace? parent = null,
+        CValue? origin = null)
     {
         Name = name;
         Axes = (Axis[])axes.Clone();
@@ -85,6 +129,19 @@ public class CSpace
         AffineType = affineType;
         Chirality = chirality;
         Metric = metric;
+        Parent = parent;
+        Origin = origin;
+        // Compute depth and root once, walking the chain
+        if (parent == null)
+        {
+            Depth = 0;
+            Root = this;
+        }
+        else
+        {
+            Depth = parent.Depth + 1;
+            Root = parent.Root;
+        }
     }
 
     /// <summary>
@@ -194,6 +251,47 @@ public class CSpace
 
         return new CSpace(Name + "'", newAxes, newAlgebra,
             AffineType, -Chirality, Metric);
+    }
+
+    // ================================================================
+    //  NESTED FRAME TRANSFORMS
+    //  Sub-spaces share the same coordinate system as their parent,
+    //  so transforms are identity in tick space — just a type re-wrap.
+    // ================================================================
+
+    /// <summary>
+    /// Re-interpret a child value's tick components in the parent frame.
+    /// Because sub-spaces use the same coordinate system (same ticks, same units),
+    /// this is a type-level re-wrap — the tick values are identical.
+    /// A value at position 5 in the sub-space IS at position 5 in the parent.
+    ///
+    /// Use Tension.ComputeLayered(childValue) to check tension at every level.
+    /// Throws if called on a root space (no parent).
+    /// </summary>
+    public CValue TransformToParent(CValue childValue)
+    {
+        if (Parent == null)
+            throw new InvalidOperationException(
+                $"Space '{Name}' is a root space and has no parent to transform into.");
+        return new CValue(Parent, childValue.Components, childValue.Certainty);
+    }
+
+    /// <summary>
+    /// Walk all ancestor frames (innermost first) and yield this value
+    /// re-expressed in each one. Since all frames share the same coordinate
+    /// system, the tick values are identical — only the Space reference changes.
+    ///
+    /// Useful for computing layered tension across the entire ancestry chain.
+    /// Equivalent to calling TransformToParent() repeatedly up the chain.
+    /// </summary>
+    public IEnumerable<(CSpace Frame, CValue Value)> TransformToAncestors(CValue childValue)
+    {
+        var space = Parent;
+        while (space != null)
+        {
+            yield return (space, new CValue(space, childValue.Components, childValue.Certainty));
+            space = space.Parent;
+        }
     }
 
     // ================================================================
@@ -625,6 +723,9 @@ public class CSpace
         return new CValue(target, comps, val.Certainty);
     }
 
-    public override string ToString() =>
-        $"{Name}[{Dims}D, {Algebra.Length} rules, tpu={BasisTicks}, {AffineType}, chirality={Chirality:+#;-#}, {Metric}]";
+    public override string ToString()
+    {
+        var depthStr = Depth > 0 ? $", depth={Depth}" : "";
+        return $"{Name}[{Dims}D, {Algebra.Length} rules, tpu={BasisTicks}, {AffineType}, chirality={Chirality:+#;-#}, {Metric}{depthStr}]";
+    }
 }

@@ -4,7 +4,9 @@
       "Bash(dotnet build:*)",
       "Bash(dotnet test:*)",
       "Bash(find:*)",
-      "Bash(git -C /c/Users/Robin/source/repos/Complexity log --oneline -10)"
+      "Bash(git -C /c/Users/Robin/source/repos/Complexity log --oneline -10)",
+      "Bash(Select-String -Pattern \"error|Error\")",
+      "Bash(Where-Object { $_ -notmatch \"warning|Warning|ErrorReport\" })"
     ]
   }
 }

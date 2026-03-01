@@ -91,11 +91,27 @@ public class Tension
     public static Tension Compute(CValue val)
     {
         if (!val.IsValid) return None;
+        return ComputeAgainstSpace(val, val.Space);
+    }
 
-        var tensions = new AxisTension[val.Space.Dims];
-        for (int i = 0; i < val.Space.Dims; i++)
+    /// <summary>
+    /// Compute tension for a value's tick components against a specific space's bounds.
+    /// The value does NOT need to live in that space — only the raw tick components are compared.
+    /// This allows checking a child value against its parent frame's bounds, or any ancestor's bounds.
+    ///
+    /// Requires the same number of dimensions (throws ArgumentException if mismatched).
+    /// </summary>
+    public static Tension ComputeAgainstSpace(CValue val, CSpace space)
+    {
+        if (!val.IsValid) return None;
+        if (val.Space.Dims != space.Dims)
+            throw new ArgumentException(
+                $"Dimension mismatch: value has {val.Space.Dims}D but space '{space.Name}' has {space.Dims}D.");
+
+        var tensions = new AxisTension[space.Dims];
+        for (int i = 0; i < space.Dims; i++)
         {
-            var ax = val.Space.Axes[i];
+            var ax = space.Axes[i];
             var v = val.Components[i];
             if (ax.HasMinBound && v < ax.MinBoundTicks)
                 tensions[i] = new AxisTension(i, ax.MinBoundTicks - v, +1);
@@ -105,6 +121,33 @@ public class Tension
                 tensions[i] = new AxisTension(i, 0, 0);
         }
         return new Tension(tensions);
+    }
+
+    /// <summary>
+    /// Walk the sub-space chain and compute tension at every level.
+    /// Returns one entry per frame, innermost first:
+    ///   [0] = tension within val.Space (the immediate container)
+    ///   [1] = tension within val.Space.Parent
+    ///   ...
+    ///   [n] = tension within the root space
+    ///
+    /// Because sub-spaces share the same coordinate system as their parent,
+    /// the same tick components are evaluated against progressively wider bounds.
+    /// A value can have high tension in a sub-space but zero tension in the root.
+    ///
+    /// Use this for the layered error state:
+    ///   "outside the expected range (sub-space) but within capability (root)."
+    /// </summary>
+    public static IReadOnlyList<(CSpace Space, Tension T)> ComputeLayered(CValue val)
+    {
+        var results = new List<(CSpace, Tension)>();
+        var space = val.Space;
+        while (space != null)
+        {
+            results.Add((space, ComputeAgainstSpace(val, space)));
+            space = space.Parent;
+        }
+        return results;
     }
 
     public override string ToString()
