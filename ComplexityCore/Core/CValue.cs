@@ -16,8 +16,13 @@ namespace Complexity.Core;
 ///
 /// Storage: always longs (ticks).
 /// Evaluation: always doubles (ticks / TicksPerUnit).
+///
+/// CValue is a class (reference type) so that mutable properties like Certainty
+/// work naturally when values are stored in collections (List, array, etc.).
+/// Equality is still value-based: two CValues with the same Space and Components
+/// are equal regardless of whether they are the same object instance.
 /// </summary>
-public struct CValue : IEquatable<CValue>
+public class CValue : IEquatable<CValue>
 {
     /// <summary> Tolerance in ticks. 1 tick is the minimum distinguishable difference. </summary>
     public static readonly long Tolerance = 1;
