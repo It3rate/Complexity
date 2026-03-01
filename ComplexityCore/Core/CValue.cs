@@ -597,8 +597,9 @@ public class CValue : IEquatable<CValue>
 
     public CValue Clone() => new CValue(Space, Components, Certainty);
 
-    public bool Equals(CValue other)
+    public bool Equals(CValue? other)
     {
+        if (other is null) return false;
         if (!IsValid || !other.IsValid) return !IsValid && !other.IsValid;
         if (Space != other.Space) return false;
         if (Components.Length != other.Components.Length) return false;
@@ -609,8 +610,9 @@ public class CValue : IEquatable<CValue>
         return true;
     }
 
-    public static bool operator ==(CValue a, CValue b) => a.Equals(b);
-    public static bool operator !=(CValue a, CValue b) => !a.Equals(b);
+    public static bool operator ==(CValue? a, CValue? b) =>
+        ReferenceEquals(a, b) || (a is not null && a.Equals(b));
+    public static bool operator !=(CValue? a, CValue? b) => !(a == b);
 
     public override bool Equals(object? obj) => obj is CValue other && Equals(other);
 
