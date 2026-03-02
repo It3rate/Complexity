@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="SpacesCore/SpacesCore.csproj" />
+  <Project Path="SpacesTests/SpacesTests.csproj" />
+</Solution>
