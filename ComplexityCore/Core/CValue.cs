@@ -581,6 +581,30 @@ public class CValue : IEquatable<CValue>
     }
 
     // ================================================================
+    //  HIERARCHY IDENTITY
+    // ================================================================
+
+    /// <summary>
+    /// Returns this value expressed in the Root space of the hierarchy.
+    /// Since sub-spaces share coordinates (ticks) with their ancestors,
+    /// this preserves the components but switches the Space to the Root.
+    /// </summary>
+    public CValue ToRootValue() => new CValue(Space.Root, Components, Certainty);
+
+    /// <summary>
+    /// Checks if this value represents the same geometric location as another value,
+    /// even if they are in different sub-spaces of the same root hierarchy.
+    /// </summary>
+    public bool IsSameLocation(CValue other)
+    {
+        if (other is null || !IsValid || !other.IsValid) return false;
+        // Must share the same ultimate ancestor (e.g. the same Cube)
+        if (Space.Root != other.Space.Root) return false;
+        // Must have identical tick coordinates
+        return Components.SequenceEqual(other.Components);
+    }
+
+    // ================================================================
     //  DISTANCE — metric-aware, cyclic-aware
     // ================================================================
 
