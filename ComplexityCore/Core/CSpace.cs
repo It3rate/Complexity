@@ -644,6 +644,124 @@ public class CSpace
         );
     }
 
+    /// <summary>
+    /// Twin-Square Space: two perpendicular 2D "square" planes joined at a single point.
+    ///
+    /// ── THE CORE GEOMETRIC IDEA ──────────────────────────────────────────────────────
+    ///
+    /// Take two ordinary square planes (each with 90° between their own axes).
+    /// Place them so they share only the origin — like two diamonds balancing tip-to-tip.
+    /// Rotate one 90° relative to the other.
+    ///
+    /// Result: a 3D space with 4 oblique axes embedded in R³:
+    ///
+    ///   Plane A (XY plane, standard orientation):
+    ///     a₁ = ( 1,    0,     0    )   ← points along +X
+    ///     a₂ = ( 0,    1,     0    )   ← points along +Y
+    ///     a₁ · a₂ = 0  →  90° within Plane A
+    ///
+    ///   Plane B (tilted 90° to Plane A, sharing only the origin):
+    ///     b₁ = (-0.5, -0.5,  1/√2 )   ← points into −X−Y+Z octant
+    ///     b₂ = (-0.5, -0.5, -1/√2 )   ← points into −X−Y−Z octant
+    ///     b₁ · b₂ = 0  →  90° within Plane B
+    ///
+    ///   Cross-plane angles (the striking property):
+    ///     a₁ · b₁ = a₁ · b₂ = a₂ · b₁ = a₂ · b₂ = −0.5  →  ALL 120° ✓
+    ///
+    ///   Vector equilibrium (perfectly balanced):
+    ///     a₁ + a₂ + b₁ + b₂ = (0, 0, 0)   ← the 4 directions cancel exactly
+    ///
+    /// ── WHAT A VALUE REPRESENTS ─────────────────────────────────────────────────────
+    ///
+    /// A value has 8 components organised as 4 lo/hi pairs (one per axis direction):
+    ///   (lo_a1, hi_a1, lo_a2, hi_a2, lo_b1, hi_b1, lo_b2, hi_b2)
+    ///
+    /// The 8 "extreme points" in R³ are the axis-aligned tips along each direction:
+    ///   hi_a1·a₁,  lo_a1·a₁,   ← Plane A: reach along a₁ (left/right in XY)
+    ///   hi_a2·a₂,  lo_a2·a₂,   ← Plane A: reach along a₂ (up/down in XY)
+    ///   hi_b1·b₁,  lo_b1·b₁,   ← Plane B: reach along b₁ (back-left/front-right)
+    ///   hi_b2·b₂,  lo_b2·b₂    ← Plane B: reach along b₂ (back-left/front-right ±Z)
+    ///
+    /// Their convex hull is a 16-edge polytope (a decahedron). When all 4 extents are
+    /// equal and symmetric (lo = −hi for every pair), it is the "regular twin-square"
+    /// — the most balanced state of the space.
+    ///
+    /// ── TENSION ─────────────────────────────────────────────────────────────────────
+    ///
+    /// Like any CSpace, values can exceed their axis bounds. An extent beyond ±range
+    /// produces tension on that pair's axis — exactly analogous to a 1D segment value
+    /// falling outside its space's [min, max] range.
+    ///
+    /// ── AI / FUTURE READER NOTE ─────────────────────────────────────────────────────
+    ///
+    /// To reproduce this space from scratch:
+    ///   "Construct a 3D space with 4 unit vectors: a₁=(1,0,0), a₂=(0,1,0),
+    ///    b₁=(−½,−½,1/√2), b₂=(−½,−½,−1/√2). All within-plane pairs are 90°.
+    ///    All cross-plane pairs are 120°. The 4 vectors sum to zero.
+    ///    Each direction has a lo/hi extent forming a 1D segment. The space has
+    ///    8 axes total (4 lo/hi pairs). Algebra: independent complex multiplication
+    ///    within each pair (i²=−1). No cross-pair algebra terms."
+    /// </summary>
+    public static CSpace TwinSquare(double range = 10.0, long ticksPerUnit = 100)
+    {
+        // Four independent segment pairs, one per oblique direction.
+        // Each pair uses the standard complex (segment) algebra: i²=−1.
+        //   hi×hi → +hi    (the unit squared stays unit)
+        //   lo×lo → -hi    (the unot squared flips to -unit, i.e., i²=-1)
+        //   hi×lo → +lo    (unit × unot = +unot)
+        //   lo×hi → +lo    (commutative)
+        //
+        // No cross-pair entries — the 120° relationship is purely geometric
+        // (encoded in the embedding vectors a₁,a₂,b₁,b₂) not algebraic.
+        var algebra = new[]
+        {
+            // a₁ pair  (axis 0 = lo_a1 = unot,  axis 1 = hi_a1 = unit)
+            new AlgebraEntry(1, 1, 1, +1),  // hi×hi → +hi
+            new AlgebraEntry(0, 0, 1, -1),  // lo×lo → −hi  (i²=−1)
+            new AlgebraEntry(1, 0, 0, +1),  // hi×lo → +lo
+            new AlgebraEntry(0, 1, 0, +1),  // lo×hi → +lo
+
+            // a₂ pair  (axis 2 = lo_a2,  axis 3 = hi_a2)
+            new AlgebraEntry(3, 3, 3, +1),
+            new AlgebraEntry(2, 2, 3, -1),
+            new AlgebraEntry(3, 2, 2, +1),
+            new AlgebraEntry(2, 3, 2, +1),
+
+            // b₁ pair  (axis 4 = lo_b1,  axis 5 = hi_b1)
+            new AlgebraEntry(5, 5, 5, +1),
+            new AlgebraEntry(4, 4, 5, -1),
+            new AlgebraEntry(5, 4, 4, +1),
+            new AlgebraEntry(4, 5, 4, +1),
+
+            // b₂ pair  (axis 6 = lo_b2,  axis 7 = hi_b2)
+            new AlgebraEntry(7, 7, 7, +1),
+            new AlgebraEntry(6, 6, 7, -1),
+            new AlgebraEntry(7, 6, 6, +1),
+            new AlgebraEntry(6, 7, 6, +1),
+        };
+
+        return new CSpace("twin-square",
+            new[]
+            {
+                // Plane A  —  standard XY plane (a₁ along X, a₂ along Y)
+                new Axis("a₁ᵢ", -1, -range, range, ticksPerUnit),  // 0: lo along a₁ (unot)
+                new Axis("a₁",  +1, -range, range, ticksPerUnit),  // 1: hi along a₁ (unit)
+                new Axis("a₂ᵢ", -1, -range, range, ticksPerUnit),  // 2: lo along a₂
+                new Axis("a₂",  +1, -range, range, ticksPerUnit),  // 3: hi along a₂
+
+                // Plane B  —  tilted 90° to Plane A, b₁ and b₂ at 120° to all a-axes
+                new Axis("b₁ᵢ", -1, -range, range, ticksPerUnit),  // 4: lo along b₁
+                new Axis("b₁",  +1, -range, range, ticksPerUnit),  // 5: hi along b₁
+                new Axis("b₂ᵢ", -1, -range, range, ticksPerUnit),  // 6: lo along b₂
+                new Axis("b₂",  +1, -range, range, ticksPerUnit),  // 7: hi along b₂
+            },
+            algebra,
+            AffineKind.Vector,
+            +1,
+            MetricKind.Euclidean
+        );
+    }
+
     // ================================================================
     //  FRAME COMPOSITION — combine axes and frames
     //  "I should be able to combine this frame with another left facing unit
