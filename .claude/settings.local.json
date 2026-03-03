@@ -23,7 +23,9 @@
       "Bash(cmd.exe /c \"dir C:\\\\Users\\\\Robin\\\\source\\\\repos\\\\Complexity\\\\Spaces /s /b 2>&1\")",
       "Bash(powershell -Command \":*)",
       "Bash(ls -la /c/Users/Robin/source/repos/Complexity/*.sln)",
-      "Bash(powershell -Command \"[System.Guid]::NewGuid\\(\\).ToString\\(''B''\\).ToUpper\\(\\); [System.Guid]::NewGuid\\(\\).ToString\\(''B''\\).ToUpper\\(\\)\")"
+      "Bash(powershell -Command \"[System.Guid]::NewGuid\\(\\).ToString\\(''B''\\).ToUpper\\(\\); [System.Guid]::NewGuid\\(\\).ToString\\(''B''\\).ToUpper\\(\\)\")",
+      "Bash(powershell -Command \"[System.Guid]::NewGuid\\(\\).ToString\\(''B''\\).ToUpper\\(\\)\")",
+      "Bash(python3 -c \":*)"
     ]
   }
 }

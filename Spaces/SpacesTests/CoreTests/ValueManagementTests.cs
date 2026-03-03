@@ -1,4 +1,4 @@
-namespace Spaces.Tests.CoreTests;
+﻿namespace Spaces.Tests.CoreTests;
 
 /// <summary>
 /// Tests for IValueSpace implementation in both Space and SpaceValue.
@@ -61,8 +61,8 @@ public class ValueManagementTests
         Assert.HasCount(1, s.Values);
         Assert.AreSame(v, s.Values[0]);
         // Value has correct ticks (magnitude convention)
-        Assert.AreEqual(200L, v.GetLo(0));
-        Assert.AreEqual(400L, v.GetHi(0));
+        Assert.AreEqual(200L, v.GetP0(0));
+        Assert.AreEqual(400L, v.GetP1(0));
     }
 
     [TestMethod]
@@ -213,3 +213,4 @@ public class ValueManagementTests
         }
     }
 }
+

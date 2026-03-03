@@ -1,14 +1,14 @@
 namespace Spaces.Core;
 
 /// <summary>
-/// A value within a <see cref="Space"/>: one <see cref="Focal"/> per axis,
+/// A value within a <see cref="Space"/>: one <see cref="Proportion"/> per axis,
 /// plus an optional collection of sub-values.
 ///
 /// ── VALUE ENCODING ──────────────────────────────────────────────────────────
 ///
-/// For each axis k the value holds a Focal where:
-///   Focal.Lo = magnitude in the LEFT / imaginary (i) direction, in ticks (≥ 0)
-///   Focal.Hi = magnitude in the RIGHT / real (r) direction, in ticks (≥ 0)
+/// For each axis k the value holds a Proportion where:
+///   Proportion.P0 = magnitude in the LEFT / imaginary direction, in ticks (≥ 0)
+///   Proportion.P1 = magnitude in the RIGHT / real direction, in ticks (≥ 0)
 ///
 /// Both components are NON-NEGATIVE MAGNITUDES when created via
 /// <see cref="Space.Value"/> or <see cref="Space.CreateValue"/> (abs is applied
@@ -17,32 +17,32 @@ namespace Spaces.Core;
 ///
 /// ── CHIRALITY AND DISPLAY ───────────────────────────────────────────────────
 ///
-/// The direction each component maps to on the number line depends on chirality:
+/// The fraction read from each Proportion and the direction on the number line
+/// depends on the axis chirality:
 ///
-///   Chirality.Positive:
-///     Number-line position: [−lo/tpu, +hi/tpu]
-///     Display: "{lo/tpu}i + {hi/tpu}"       e.g. "5i + 6" for Focal(500, 600) @ tpu=100
-///     Interpretation: the Lo magnitude is 5 units to the LEFT (−5), Hi is 6 RIGHT (+6).
+///   Chirality.Positive (right / real side):
+///     Number-line position: [−p0/tpu, +p1/tpu]
+///     Display: "({p0/tpu}i+{p1/tpu})"
+///     Example: Proportion(500, 600) @ tpu=100 → "(5i+6)"  fraction 6/5
 ///
-///   Chirality.Negative  (axis viewed from the opposite end):
-///     Number-line position: [+lo/tpu, −hi/tpu]
-///     Display: "(−{lo/tpu}i − {hi/tpu})"    e.g. "(−5i − 6)" for same Focal
-///     Interpretation: the Lo magnitude is 5 units to the RIGHT (+5), Hi is 6 LEFT (−6).
-///     The parentheses and leading minus indicate negative chirality to the reader.
+///   Chirality.Negative (left / imaginary side — rotate the paper):
+///     Number-line position: [+p0/tpu, −p1/tpu]
+///     Display: "[-{p0/tpu}i-{p1/tpu}]"
+///     Example: Proportion(500, 600) @ tpu=100 → "[-5i-6]"  fraction 5/6
 ///
 /// Use <see cref="ToDisplayString(Chirality, int)"/> to render axis-level display.
 ///
 /// ── FLAT COMPONENT INDEXING ─────────────────────────────────────────────────
 ///
 /// GetComponent(i) maps flat index i to a tick value:
-///   i = 2k   →  Focals[k].Lo
-///   i = 2k+1 →  Focals[k].Hi
+///   i = 2k   →  Proportions[k].P0
+///   i = 2k+1 →  Proportions[k].P1
 ///
 /// This matches the indexing used in <see cref="AlgebraEntry"/>.
 ///
 /// ── ARITHMETIC ──────────────────────────────────────────────────────────────
 ///
-/// Addition (A + B):    component-wise in ticks.  Lo+Lo, Hi+Hi per axis.
+/// Addition (A + B):    component-wise in ticks.  P0+P0, P1+P1 per axis.
 /// Subtraction (A − B): component-wise in ticks.  May produce negative components.
 /// Negation (−A):       flip all component signs.  Produces negative components.
 ///
@@ -76,19 +76,19 @@ public sealed class SpaceValue : IValueSpace
     /// <summary>The Space this value belongs to.</summary>
     public Space Space { get; }
 
-    /// <summary>One Focal per axis, in axis order.</summary>
-    public IReadOnlyList<Focal> Focals { get; }
+    /// <summary>One Proportion per axis, in axis order.</summary>
+    public IReadOnlyList<Proportion> Proportions { get; }
 
     // ── Sub-value registry ────────────────────────────────────────────────────
     private readonly List<SpaceValue> _subValues = new();
 
-    public SpaceValue(Space space, IReadOnlyList<Focal> focals)
+    public SpaceValue(Space space, IReadOnlyList<Proportion> proportions)
     {
-        if (focals.Count != space.Axes.Count)
+        if (proportions.Count != space.Axes.Count)
             throw new ArgumentException(
-                $"Value has {focals.Count} focals but space has {space.Axes.Count} axes.");
-        Space  = space;
-        Focals = focals;
+                $"Value has {proportions.Count} proportions but space has {space.Axes.Count} axes.");
+        Space       = space;
+        Proportions = proportions;
     }
 
     // ── IValueSpace implementation ────────────────────────────────────────────
@@ -154,37 +154,37 @@ public sealed class SpaceValue : IValueSpace
 
     /// <summary>
     /// Get the tick value for flat component index i.
-    ///   Even i  →  Focals[i/2].Lo  (i / left magnitude)
-    ///   Odd  i  →  Focals[i/2].Hi  (r / right magnitude)
+    ///   Even i  →  Proportions[i/2].P0  (left / imaginary magnitude)
+    ///   Odd  i  →  Proportions[i/2].P1  (right / real magnitude)
     /// </summary>
     public long GetComponent(int componentIdx)
     {
         int  a    = componentIdx >> 1;
-        bool isHi = (componentIdx & 1) == 1;
-        return isHi ? Focals[a].Hi : Focals[a].Lo;
+        bool isP1 = (componentIdx & 1) == 1;
+        return isP1 ? Proportions[a].P1 : Proportions[a].P0;
     }
 
-    /// <summary>Lo ticks (left / i magnitude) for axis <paramref name="axisIdx"/>.</summary>
-    public long GetLo(int axisIdx) => Focals[axisIdx].Lo;
+    /// <summary>P0 ticks (left / imaginary magnitude) for axis <paramref name="axisIdx"/>.</summary>
+    public long GetP0(int axisIdx) => Proportions[axisIdx].P0;
 
-    /// <summary>Hi ticks (right / r magnitude) for axis <paramref name="axisIdx"/>.</summary>
-    public long GetHi(int axisIdx) => Focals[axisIdx].Hi;
+    /// <summary>P1 ticks (right / real magnitude) for axis <paramref name="axisIdx"/>.</summary>
+    public long GetP1(int axisIdx) => Proportions[axisIdx].P1;
 
     /// <summary>
-    /// Lo converted to units for axis <paramref name="axisIdx"/>.
-    /// Divides by TicksPerUnit (= Unit.Hi for the axis).
+    /// P0 converted to units for axis <paramref name="axisIdx"/>.
+    /// Divides by TicksPerUnit (= Unit.P1 for the axis).
     /// Returns a positive value for user-created values; may be negative
     /// after arithmetic tension.
     /// </summary>
-    public double GetLoUnits(int axisIdx) =>
-        Space.Axes[axisIdx].ToUnits(Focals[axisIdx].Lo);
+    public double GetP0Units(int axisIdx) =>
+        Space.Axes[axisIdx].ToUnits(Proportions[axisIdx].P0);
 
     /// <summary>
-    /// Hi converted to units for axis <paramref name="axisIdx"/>.
+    /// P1 converted to units for axis <paramref name="axisIdx"/>.
     /// Divides by TicksPerUnit.
     /// </summary>
-    public double GetHiUnits(int axisIdx) =>
-        Space.Axes[axisIdx].ToUnits(Focals[axisIdx].Hi);
+    public double GetP1Units(int axisIdx) =>
+        Space.Axes[axisIdx].ToUnits(Proportions[axisIdx].P1);
 
     // ── Chirality display ─────────────────────────────────────────────────────
 
@@ -192,45 +192,45 @@ public sealed class SpaceValue : IValueSpace
     /// Render the value for <paramref name="axisIdx"/> as a human-readable string,
     /// applying the axis's <paramref name="chirality"/> to determine sign convention.
     ///
-    /// Chirality.Positive:
-    ///   Display: "{lo_units}i + {hi_units}"
-    ///   The lo magnitude is left-pointing (maps to negative on the number line).
-    ///   Example: Focal(500, 600) @ tpu=100 → "5i + 6"
+    /// 'i' marks the start point (P0 = left extent from origin).
+    /// P0 is always listed first, P1 second.
     ///
-    /// Chirality.Negative  (axis viewed upside-down):
-    ///   Display: "(−{lo_units}i − {hi_units})"
-    ///   The entire value is negated: lo maps to positive, hi maps to negative.
-    ///   The parentheses signal negative chirality to the reader.
-    ///   Example: Focal(500, 600) @ tpu=100 → "(−5i − 6)"
+    /// Chirality.Positive — standard reading (real / right side):
+    ///   Display: "({p0_units}i+{p1_units})"
+    ///   Example: Proportion(500, 600) @ tpu=100 → "(5i+6)"
+    ///
+    /// Chirality.Negative  (rotate the paper — imaginary / left side):
+    ///   Display: "[-{p0_units}i-{p1_units}]"
+    ///   Example: Proportion(500, 600) @ tpu=100 → "[-5i-6]"
     /// </summary>
     public string ToDisplayString(Chirality chirality, int axisIdx)
     {
         var    ax      = Space.Axes[axisIdx];
-        double loUnits = ax.ToUnits(Focals[axisIdx].Lo);
-        double hiUnits = ax.ToUnits(Focals[axisIdx].Hi);
+        double p0Units = ax.ToUnits(Proportions[axisIdx].P0);
+        double p1Units = ax.ToUnits(Proportions[axisIdx].P1);
 
         return chirality == Chirality.Positive
-            ? $"{loUnits:G4}i + {hiUnits:G4}"
-            : $"(−{loUnits:G4}i − {hiUnits:G4})";
+            ? $"({p0Units:G4}i+{p1Units:G4})"
+            : $"[-{p0Units:G4}i-{p1Units:G4}]";
     }
 
     // ── Arithmetic operators ──────────────────────────────────────────────────
 
     /// <summary>
     /// Component-wise addition.
-    /// For segments: adds the Lo and Hi magnitudes independently.
+    /// Adds the P0 and P1 magnitudes independently per axis.
     /// Result may exceed axis range (tension) but is never clamped.
     /// </summary>
     public static SpaceValue operator +(SpaceValue a, SpaceValue b)
     {
         AssertSameSpace(a, b);
-        int    n      = a.Space.Axes.Count;
-        var    focals = new Focal[n];
+        int    n           = a.Space.Axes.Count;
+        var    proportions = new Proportion[n];
         for (int k = 0; k < n; k++)
-            focals[k] = new Focal(
-                a.Focals[k].Lo + b.Focals[k].Lo,
-                a.Focals[k].Hi + b.Focals[k].Hi);
-        return new SpaceValue(a.Space, focals);
+            proportions[k] = new Proportion(
+                a.Proportions[k].P0 + b.Proportions[k].P0,
+                a.Proportions[k].P1 + b.Proportions[k].P1);
+        return new SpaceValue(a.Space, proportions);
     }
 
     /// <summary>
@@ -241,26 +241,26 @@ public sealed class SpaceValue : IValueSpace
     public static SpaceValue operator -(SpaceValue a, SpaceValue b)
     {
         AssertSameSpace(a, b);
-        int    n      = a.Space.Axes.Count;
-        var    focals = new Focal[n];
+        int    n           = a.Space.Axes.Count;
+        var    proportions = new Proportion[n];
         for (int k = 0; k < n; k++)
-            focals[k] = new Focal(
-                a.Focals[k].Lo - b.Focals[k].Lo,
-                a.Focals[k].Hi - b.Focals[k].Hi);
-        return new SpaceValue(a.Space, focals);
+            proportions[k] = new Proportion(
+                a.Proportions[k].P0 - b.Proportions[k].P0,
+                a.Proportions[k].P1 - b.Proportions[k].P1);
+        return new SpaceValue(a.Space, proportions);
     }
 
     /// <summary>
     /// Negate: flip all component signs.
-    /// The result has negative Lo and Hi — this is valid "tension" arithmetic.
+    /// The result has negative P0 and P1 — this is valid "tension" arithmetic.
     /// </summary>
     public static SpaceValue operator -(SpaceValue v)
     {
-        int    n      = v.Space.Axes.Count;
-        var    focals = new Focal[n];
+        int    n           = v.Space.Axes.Count;
+        var    proportions = new Proportion[n];
         for (int k = 0; k < n; k++)
-            focals[k] = new Focal(-v.Focals[k].Lo, -v.Focals[k].Hi);
-        return new SpaceValue(v.Space, focals);
+            proportions[k] = new Proportion(-v.Proportions[k].P0, -v.Proportions[k].P1);
+        return new SpaceValue(v.Space, proportions);
     }
 
     /// <summary>
@@ -292,12 +292,12 @@ public sealed class SpaceValue : IValueSpace
                 * a.GetComponent(entry.LeftIdx)
                 * b.GetComponent(entry.RightIdx);
 
-        // Pack accumulator back into Focals (one per axis), normalising by BasisTicks
-        int    axes   = a.Space.Axes.Count;
-        var    focals = new Focal[axes];
+        // Pack accumulator back into Proportions (one per axis), normalising by BasisTicks
+        int    axes        = a.Space.Axes.Count;
+        var    proportions = new Proportion[axes];
         for (int k = 0; k < axes; k++)
-            focals[k] = new Focal(acc[k * 2] / bt, acc[k * 2 + 1] / bt);
-        return new SpaceValue(a.Space, focals);
+            proportions[k] = new Proportion(acc[k * 2] / bt, acc[k * 2 + 1] / bt);
+        return new SpaceValue(a.Space, proportions);
     }
 
     // ── Overflow / tension ────────────────────────────────────────────────────
@@ -319,8 +319,8 @@ public sealed class SpaceValue : IValueSpace
         for (int k = 0; k < Space.Axes.Count; k++)
         {
             var ax = Space.Axes[k];
-            total += MagnitudeOverflow(Focals[k].Lo, ax.MaxLoTick);
-            total += MagnitudeOverflow(Focals[k].Hi, ax.MaxHiTick);
+            total += MagnitudeOverflow(Proportions[k].P0, ax.MaxP0Tick);
+            total += MagnitudeOverflow(Proportions[k].P1, ax.MaxP1Tick);
         }
         return total;
     }
@@ -353,13 +353,13 @@ public sealed class SpaceValue : IValueSpace
 
     public override string ToString()
     {
-        var parts = Focals.Select((f, k) =>
+        var parts = Proportions.Select((p, k) =>
         {
             var    ax   = Space.Axes[k];
-            double lo   = ax.ToUnits(f.Lo);
-            double hi   = ax.ToUnits(f.Hi);
+            double p0   = ax.ToUnits(p.P0);
+            double p1   = ax.ToUnits(p.P1);
             string name = ax.Name;
-            return (name.Length > 0 ? $"{name}:" : "") + $"[{lo:G4}i + {hi:G4}]";
+            return (name.Length > 0 ? $"{name}:" : "") + $"[{p0:G4}i+{p1:G4}]";
         });
         return string.Join("  ", parts);
     }

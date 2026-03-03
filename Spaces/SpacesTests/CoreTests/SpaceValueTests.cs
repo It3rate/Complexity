@@ -1,18 +1,18 @@
-namespace Spaces.Tests.CoreTests;
+﻿namespace Spaces.Tests.CoreTests;
 
 /// <summary>
 /// Tests for SpaceValue arithmetic, overflow, and component access.
 ///
 /// VALUE MAGNITUDE CONVENTION:
 ///   All values created via s.Value() store NON-NEGATIVE MAGNITUDES:
-///     Lo = distance in LEFT  (i) direction  ≥ 0
-///     Hi = distance in RIGHT (r) direction  ≥ 0
+///     P0 = distance in LEFT  (i) direction  ≥ 0
+///     P1 = distance in RIGHT (r) direction  ≥ 0
 ///
 ///   Space.Value() abs() both inputs before converting to ticks.
 ///
 /// ARITHMETIC TENSION:
 ///   After arithmetic operations, components MAY be negative — this is valid.
-///   Negative Lo means "the left extent went past zero into the right direction."
+///   Negative P0 means "the left extent went past zero into the right direction."
 ///   These negative values contribute to TotalOverflow() as tension information.
 ///
 /// OVERFLOW SEMANTICS:
@@ -51,21 +51,21 @@ public class SpaceValueTests
     }
 
     [TestMethod]
-    public void GetLoUnits_GetHiUnits_ConvertMagnitudeBackToUnits()
+    public void GetP0Units_GetP1Units_ConvertMagnitudeBackToUnits()
     {
         // Both lo and hi are stored as positive magnitudes.
-        // GetLoUnits returns lo_ticks / tpu = 350/100 = 3.5 (positive).
+        // GetP0Units returns lo_ticks / tpu = 350/100 = 3.5 (positive).
         var v = _seg.Value(3.5, 7.0);          // lo=350, hi=700 ticks
-        Assert.AreEqual(3.5, v.GetLoUnits(0), delta: 1e-10);
-        Assert.AreEqual(7.0, v.GetHiUnits(0), delta: 1e-10);
+        Assert.AreEqual(3.5, v.GetP0Units(0), delta: 1e-10);
+        Assert.AreEqual(7.0, v.GetP1Units(0), delta: 1e-10);
     }
 
     [TestMethod]
-    public void GetLoUnits_NegativeInput_StoredAsPositiveMagnitude()
+    public void GetP0Units_NegativeInput_StoredAsPositiveMagnitude()
     {
-        // -3.5 for lo → abs → stored as 350 ticks → GetLoUnits returns +3.5
+        // -3.5 for lo → abs → stored as 350 ticks → GetP0Units returns +3.5
         var v = _seg.Value(-3.5, 7.0);
-        Assert.AreEqual(3.5, v.GetLoUnits(0), delta: 1e-10);
+        Assert.AreEqual(3.5, v.GetP0Units(0), delta: 1e-10);
     }
 
     // ── Addition ───────────────────────────────────────────────────────────
@@ -73,12 +73,12 @@ public class SpaceValueTests
     [TestMethod]
     public void Addition_ComponentWise_OnMagnitudes()
     {
-        // Adding two magnitude focals: each component sums independently.
+        // Adding two magnitude proportions: each component sums independently.
         var a = _seg.Value(1.0, 2.0);   // lo=100, hi=200
         var b = _seg.Value(3.0, 4.0);   // lo=300, hi=400
         var r = a + b;
-        Assert.AreEqual(400L, r.GetLo(0));   // 100 + 300 = 400
-        Assert.AreEqual(600L, r.GetHi(0));   // 200 + 400 = 600
+        Assert.AreEqual(400L, r.GetP0(0));   // 100 + 300 = 400
+        Assert.AreEqual(600L, r.GetP1(0));   // 200 + 400 = 600
     }
 
     // ── Subtraction ────────────────────────────────────────────────────────
@@ -89,8 +89,8 @@ public class SpaceValueTests
         var a = _seg.Value(5.0, 8.0);   // lo=500, hi=800
         var b = _seg.Value(1.0, 3.0);   // lo=100, hi=300
         var r = a - b;
-        Assert.AreEqual(400L, r.GetLo(0));   // 500 - 100 = 400
-        Assert.AreEqual(500L, r.GetHi(0));   // 800 - 300 = 500
+        Assert.AreEqual(400L, r.GetP0(0));   // 500 - 100 = 400
+        Assert.AreEqual(500L, r.GetP1(0));   // 800 - 300 = 500
     }
 
     [TestMethod]
@@ -100,7 +100,7 @@ public class SpaceValueTests
         var a = _seg.Value(3.0, 0.0);   // lo=300
         var b = _seg.Value(8.0, 0.0);   // lo=800
         var r = a - b;
-        Assert.AreEqual(-500L, r.GetLo(0));   // 300 - 800 = -500 (tension)
+        Assert.AreEqual(-500L, r.GetP0(0));   // 300 - 800 = -500 (tension)
     }
 
     // ── Negation ───────────────────────────────────────────────────────────
@@ -108,12 +108,12 @@ public class SpaceValueTests
     [TestMethod]
     public void Negation_FlipsAllComponentSigns()
     {
-        // Negating a positive-magnitude focal gives negative lo and hi.
+        // Negating a positive-magnitude proportion gives negative lo and hi.
         // This is valid arithmetic tension.
         var v = _seg.Value(2.0, 4.0);   // lo=200, hi=400 (magnitudes)
         var n = -v;
-        Assert.AreEqual(-200L, n.GetLo(0));
-        Assert.AreEqual(-400L, n.GetHi(0));
+        Assert.AreEqual(-200L, n.GetP0(0));
+        Assert.AreEqual(-400L, n.GetP1(0));
     }
 
     // ── Multiplication ─────────────────────────────────────────────────────
@@ -124,8 +124,8 @@ public class SpaceValueTests
         // (0i + 1r) × (0i + 1r) = 0i + 1r
         var one = _seg.Value(0.0, 1.0);     // lo=0, hi=100 ticks
         var r   = one * one;
-        Assert.AreEqual(0L,   r.GetLo(0));
-        Assert.AreEqual(100L, r.GetHi(0));  // 1 unit in r direction
+        Assert.AreEqual(0L,   r.GetP0(0));
+        Assert.AreEqual(100L, r.GetP1(0));  // 1 unit in r direction
     }
 
     [TestMethod]
@@ -135,8 +135,8 @@ public class SpaceValueTests
         // lo=100, hi=0:  acc[hi] = 0×0 − 100×100 = −10000 → / 100 = −100 ticks = −1r
         var i = _seg.Value(1.0, 0.0);       // lo=100, hi=0
         var r = i * i;
-        Assert.AreEqual(0L,    r.GetLo(0));
-        Assert.AreEqual(-100L, r.GetHi(0)); // r = −1 unit (goes left of origin)
+        Assert.AreEqual(0L,    r.GetP0(0));
+        Assert.AreEqual(-100L, r.GetP1(0)); // r = −1 unit (goes left of origin)
     }
 
     [TestMethod]
@@ -146,8 +146,8 @@ public class SpaceValueTests
         var two   = _seg.Value(0.0, 2.0);   // lo=0, hi=200
         var three = _seg.Value(0.0, 3.0);   // lo=0, hi=300
         var r     = two * three;
-        Assert.AreEqual(0L,   r.GetLo(0));
-        Assert.AreEqual(600L, r.GetHi(0));  // 6 units
+        Assert.AreEqual(0L,   r.GetP0(0));
+        Assert.AreEqual(600L, r.GetP1(0));  // 6 units
     }
 
     [TestMethod]
@@ -166,8 +166,8 @@ public class SpaceValueTests
         var a = _seg.Value(2.0, 3.0);
         var b = _seg.Value(4.0, 5.0);
         var r = a * b;
-        Assert.AreEqual(2200L, r.GetLo(0));   // i-component = 22 units
-        Assert.AreEqual(700L,  r.GetHi(0));   // r-component = 7 units
+        Assert.AreEqual(2200L, r.GetP0(0));   // i-component = 22 units
+        Assert.AreEqual(700L,  r.GetP1(0));   // r-component = 7 units
     }
 
     // ── Grid multiplication ────────────────────────────────────────────────
@@ -185,10 +185,10 @@ public class SpaceValueTests
         var b = grid.Value(0.0, 3.0,  1.0, 0.0);   // x=(0,300) y=(100,0)
         var r = a * b;
 
-        Assert.AreEqual(0L,    r.GetLo(0));   // x i-component = 0
-        Assert.AreEqual(600L,  r.GetHi(0));   // x r-component = 6 units
-        Assert.AreEqual(0L,    r.GetLo(1));   // y i-component = 0
-        Assert.AreEqual(-100L, r.GetHi(1));   // y r-component = −1 unit (i² = −1)
+        Assert.AreEqual(0L,    r.GetP0(0));   // x i-component = 0
+        Assert.AreEqual(600L,  r.GetP1(0));   // x r-component = 6 units
+        Assert.AreEqual(0L,    r.GetP0(1));   // y i-component = 0
+        Assert.AreEqual(-100L, r.GetP1(1));   // y r-component = −1 unit (i² = −1)
     }
 
     // ── Overflow / tension ─────────────────────────────────────────────────
@@ -269,3 +269,4 @@ public class SpaceValueTests
         Assert.ThrowsExactly<InvalidOperationException>(() => { _ = v1 * v2; });
     }
 }
+

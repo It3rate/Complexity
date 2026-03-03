@@ -8,23 +8,24 @@ namespace Spaces.Tests.CoreTests;
 ///
 /// KEY CONCEPTS UNDER TEST:
 ///
-///   1. Unit Focal (for real / Signed + Positive axes):
-///      Unit = ZeroImag(tpu) → Lo = 0 (Fixed), Hi = tpu
-///      This prevents imaginary components from entering purely-real calculations.
+///   1. Two-proportion structure:
+///      RealProportion  — positive chirality (real / right side)
+///        P0 = real unit ticks (denominator),  P1 = real extent ticks (numerator)
+///      ImagProportion  — negative chirality (imaginary / left side)
+///        P0 = imaginary extent ticks (numerator),  P1 = imaginary unit ticks (denominator)
 ///
-///   2. Range Focal (for Signed axes):
-///      Range = Focal(maxTick, maxTick) — both POSITIVE magnitudes.
-///      MaxLoTick = max ticks allowed in the LEFT (i) direction.
-///      MaxHiTick = max ticks allowed in the RIGHT (r) direction.
+///   2. Derived Range and Unit:
+///      Range.P0 = ImagProportion.GetMeasure(Negative) = max LEFT  magnitude
+///      Range.P1 = RealProportion.GetMeasure(Positive) = max RIGHT magnitude
+///      Unit.P0  = ImagProportion.GetUnit(Negative)    = imaginary tpu (0 Fixed for real axes)
+///      Unit.P1  = RealProportion.GetUnit(Positive)    = real tpu
 ///
-///   3. Range Checking — LoInRange / HiInRange:
+///   3. Range Checking — P0InRange / P1InRange:
 ///      Valid range for any magnitude: [0, maxMagnitude].
-///      Negative ticks are ALWAYS invalid (they represent arithmetic tension,
-///      not a user-created value).
+///      Negative ticks are ALWAYS invalid (arithmetic tension).
 ///
 ///   4. Conversions (ToTicks / ToUnits):
-///      These are unchanged, signed helpers.  Space.Value() applies abs()
-///      separately — the Axis itself does not enforce positivity.
+///      Signed helpers.  Space.Value() applies abs() separately.
 /// </summary>
 [TestClass]
 public class AxisTests
@@ -43,41 +44,70 @@ public class AxisTests
     [TestMethod]
     public void Signed_Range_StoresBothMagnitudesAsPositive()
     {
-        // Range.Lo = max left magnitude, Range.Hi = max right magnitude.
+        // Range.P0 = max left magnitude, Range.P1 = max right magnitude.
         // Both are maxTick (= rangeMax × tpu = 10 × 100 = 1000).
         var ax = Axis.Signed(10.0, 100L);
-        Assert.AreEqual(1000L, ax.MaxLoTick);
-        Assert.AreEqual(1000L, ax.MaxHiTick);
-        Assert.AreEqual(1000L, ax.MaxTick);   // convenience alias for MaxHiTick
+        Assert.AreEqual(1000L, ax.MaxP0Tick);
+        Assert.AreEqual(1000L, ax.MaxP1Tick);
+        Assert.AreEqual(1000L, ax.MaxTick);   // convenience alias for MaxP1Tick
     }
 
     [TestMethod]
-    public void Signed_Range_LoAndHi_StoredInRangeFocal()
+    public void Signed_Range_P0AndP1_StoredInRangeProportion()
     {
         var ax = Axis.Signed(5.0, 10L);
-        Assert.AreEqual(50L, ax.Range.Lo);    // max left  magnitude = 5 × 10
-        Assert.AreEqual(50L, ax.Range.Hi);    // max right magnitude = 5 × 10
+        Assert.AreEqual(50L, ax.Range.P0);    // max left  magnitude = 5 × 10
+        Assert.AreEqual(50L, ax.Range.P1);    // max right magnitude = 5 × 10
     }
 
     // ── Signed factory — Unit (ZeroImag: no imaginary component) ───────────
 
     [TestMethod]
-    public void Signed_Unit_HasFixedLock_OnLo_AndLoIsZero()
+    public void Signed_Unit_HasFixedLock_OnP0_AndP0IsZero()
     {
-        // For real (non-complex) axes, the i-unit is 0 (Fixed).
-        // This is the key change: previously NegateOther; now Fixed at 0.
+        // For real (non-complex) axes, the imaginary unit is 0 (Fixed).
         var ax = Axis.Signed(10.0, 100L);
-        Assert.AreEqual(EndLock.Fixed, ax.Unit.LoLock);
-        Assert.AreEqual(0L,   ax.Unit.Lo);
-        Assert.AreEqual(100L, ax.Unit.Hi);
+        Assert.AreEqual(EndLock.Fixed, ax.Unit.P0Lock);
+        Assert.AreEqual(0L,   ax.Unit.P0);
+        Assert.AreEqual(100L, ax.Unit.P1);
+        // Chirality-dependent access:
+        Assert.AreEqual(0L,   ax.Unit.GetUnit(Chirality.Positive));    // denominator direction = 0
+        Assert.AreEqual(100L, ax.Unit.GetMeasure(Chirality.Positive)); // numerator direction = 100 ticks
     }
 
     [TestMethod]
-    public void Signed_Unit_TicksPerUnit_IsUnitHi()
+    public void Signed_Unit_TicksPerUnit_IsUnitP1()
     {
         var ax = Axis.Signed(10.0, 200L);
         Assert.AreEqual(200L, ax.TicksPerUnit);
-        Assert.AreEqual(200L, ax.Unit.Hi);
+        Assert.AreEqual(200L, ax.Unit.P1);
+    }
+
+    // ── Signed factory — two-proportion structure ───────────────────────────
+
+    [TestMethod]
+    public void Signed_RealProportion_HasUnitAndMeasure()
+    {
+        // RealProportion.P0 = tpu (unit/denominator in positive chirality)
+        // RealProportion.P1 = maxTick (measure/numerator in positive chirality)
+        var ax = Axis.Signed(10.0, 100L);
+        Assert.AreEqual(100L,  ax.RealProportion.P0);   // real tpu
+        Assert.AreEqual(1000L, ax.RealProportion.P1);   // real extent
+        Assert.AreEqual(100L,  ax.RealProportion.GetUnit(Chirality.Positive));
+        Assert.AreEqual(1000L, ax.RealProportion.GetMeasure(Chirality.Positive));
+    }
+
+    [TestMethod]
+    public void Signed_ImagProportion_HasMeasureAndZeroUnit()
+    {
+        // ImagProportion.P0 = maxTick (measure in negative chirality)
+        // ImagProportion.P1 = 0 Fixed (unit in negative chirality — no imaginary unit for real axis)
+        var ax = Axis.Signed(10.0, 100L);
+        Assert.AreEqual(1000L,       ax.ImagProportion.P0);
+        Assert.AreEqual(0L,          ax.ImagProportion.P1);
+        Assert.AreEqual(EndLock.Fixed, ax.ImagProportion.P1Lock);
+        Assert.AreEqual(0L,          ax.ImagProportion.GetUnit(Chirality.Negative));
+        Assert.AreEqual(1000L,       ax.ImagProportion.GetMeasure(Chirality.Negative));
     }
 
     // ── Signed factory — Chirality ──────────────────────────────────────────
@@ -92,96 +122,105 @@ public class AxisTests
     // ── Positive factory ────────────────────────────────────────────────────
 
     [TestMethod]
-    public void Positive_Range_StartsAtZero_MaxHiTickIsMax()
+    public void Positive_Range_StartsAtZero_MaxP1TickIsMax()
     {
-        // Positive axis has no left extent: Range = ZeroImag(maxTick).
+        // Positive axis has no left extent: Range.P0 = 0 (Fixed).
         var ax = Axis.Positive(10.0, 100L);
-        Assert.AreEqual(0L,    ax.MaxLoTick);   // lo=0 Fixed in range focal
-        Assert.AreEqual(1000L, ax.MaxHiTick);
+        Assert.AreEqual(0L,    ax.MaxP0Tick);   // P0 fixed at 0 in range
+        Assert.AreEqual(1000L, ax.MaxP1Tick);
     }
 
     [TestMethod]
-    public void Positive_RangeLo_IsFixed_AtZero()
+    public void Positive_RangeP0_IsFixed_AtZero()
     {
         var ax = Axis.Positive(10.0, 100L);
-        Assert.AreEqual(EndLock.Fixed, ax.Range.LoLock);
-        Assert.AreEqual(0L, ax.Range.Lo);
+        Assert.AreEqual(EndLock.Fixed, ax.Range.P0Lock);
+        Assert.AreEqual(0L, ax.Range.P0);
     }
 
     [TestMethod]
-    public void Positive_Unit_HasFixedLock_OnLo_SameAsSignedUnit()
+    public void Positive_Unit_HasFixedLock_OnP0_SameAsSignedUnit()
     {
-        // Both Signed and Positive use ZeroImag for their Unit focal.
+        // Both Signed and Positive produce Unit.P0 = 0 (Fixed).
         var ax = Axis.Positive(10.0, 100L);
-        Assert.AreEqual(EndLock.Fixed, ax.Unit.LoLock);
-        Assert.AreEqual(0L,   ax.Unit.Lo);
-        Assert.AreEqual(100L, ax.Unit.Hi);
+        Assert.AreEqual(EndLock.Fixed, ax.Unit.P0Lock);
+        Assert.AreEqual(0L,   ax.Unit.P0);
+        Assert.AreEqual(100L, ax.Unit.P1);
     }
 
-    // ── Range checking — LoInRange and HiInRange ────────────────────────────
-
     [TestMethod]
-    public void LoInRange_True_ForZeroToMaxLoTick()
+    public void Positive_ImagProportion_BothFixed_AtZero()
     {
-        var ax = Axis.Signed(10.0, 100L);   // MaxLoTick = 1000
-        Assert.IsTrue(ax.LoInRange(0L));
-        Assert.IsTrue(ax.LoInRange(500L));
-        Assert.IsTrue(ax.LoInRange(1000L));
+        // Positive axis: ImagProportion has P0=0 (Fixed) and P1=0 (Fixed).
+        var ax = Axis.Positive(10.0, 100L);
+        Assert.AreEqual(EndLock.Fixed, ax.ImagProportion.P0Lock);
+        Assert.AreEqual(EndLock.Fixed, ax.ImagProportion.P1Lock);
+        Assert.AreEqual(0L, ax.ImagProportion.P0);
+        Assert.AreEqual(0L, ax.ImagProportion.P1);
     }
 
+    // ── Range checking — P0InRange and P1InRange ────────────────────────────
+
     [TestMethod]
-    public void LoInRange_False_WhenExceedsMax()
+    public void P0InRange_True_ForZeroToMaxP0Tick()
     {
-        var ax = Axis.Signed(10.0, 100L);   // MaxLoTick = 1000
-        Assert.IsFalse(ax.LoInRange(1001L));
-        Assert.IsFalse(ax.LoInRange(10000L));
+        var ax = Axis.Signed(10.0, 100L);   // MaxP0Tick = 1000
+        Assert.IsTrue(ax.P0InRange(0L));
+        Assert.IsTrue(ax.P0InRange(500L));
+        Assert.IsTrue(ax.P0InRange(1000L));
     }
 
     [TestMethod]
-    public void LoInRange_False_ForNegativeTicks()
+    public void P0InRange_False_WhenExceedsMax()
     {
-        // Negative ticks represent arithmetic tension — always out-of-range
-        // for a magnitude component created by the user.
-        var ax = Axis.Signed(10.0, 100L);
-        Assert.IsFalse(ax.LoInRange(-1L));
-        Assert.IsFalse(ax.LoInRange(-1000L));
+        var ax = Axis.Signed(10.0, 100L);   // MaxP0Tick = 1000
+        Assert.IsFalse(ax.P0InRange(1001L));
+        Assert.IsFalse(ax.P0InRange(10000L));
     }
 
     [TestMethod]
-    public void HiInRange_True_ForZeroToMaxHiTick()
-    {
-        var ax = Axis.Signed(10.0, 100L);   // MaxHiTick = 1000
-        Assert.IsTrue(ax.HiInRange(0L));
-        Assert.IsTrue(ax.HiInRange(500L));
-        Assert.IsTrue(ax.HiInRange(1000L));
-    }
-
-    [TestMethod]
-    public void HiInRange_False_WhenExceedsMax()
+    public void P0InRange_False_ForNegativeTicks()
     {
         var ax = Axis.Signed(10.0, 100L);
-        Assert.IsFalse(ax.HiInRange(1001L));
+        Assert.IsFalse(ax.P0InRange(-1L));
+        Assert.IsFalse(ax.P0InRange(-1000L));
     }
 
     [TestMethod]
-    public void HiInRange_False_ForNegativeTicks()
+    public void P1InRange_True_ForZeroToMaxP1Tick()
+    {
+        var ax = Axis.Signed(10.0, 100L);   // MaxP1Tick = 1000
+        Assert.IsTrue(ax.P1InRange(0L));
+        Assert.IsTrue(ax.P1InRange(500L));
+        Assert.IsTrue(ax.P1InRange(1000L));
+    }
+
+    [TestMethod]
+    public void P1InRange_False_WhenExceedsMax()
     {
         var ax = Axis.Signed(10.0, 100L);
-        Assert.IsFalse(ax.HiInRange(-1L));
-        Assert.IsFalse(ax.HiInRange(-500L));
+        Assert.IsFalse(ax.P1InRange(1001L));
     }
 
     [TestMethod]
-    public void Positive_LoInRange_OnlyZeroIsValid()
+    public void P1InRange_False_ForNegativeTicks()
     {
-        // Positive axis: MaxLoTick = 0 (no left extent)
-        var ax = Axis.Positive(10.0, 100L);
-        Assert.IsTrue(ax.LoInRange(0L));
-        Assert.IsFalse(ax.LoInRange(1L));    // any non-zero lo is out of range
-        Assert.IsFalse(ax.LoInRange(-1L));
+        var ax = Axis.Signed(10.0, 100L);
+        Assert.IsFalse(ax.P1InRange(-1L));
+        Assert.IsFalse(ax.P1InRange(-500L));
     }
 
-    // ── Conversions (unchanged signed helpers) ──────────────────────────────
+    [TestMethod]
+    public void Positive_P0InRange_OnlyZeroIsValid()
+    {
+        // Positive axis: MaxP0Tick = 0 (no left extent)
+        var ax = Axis.Positive(10.0, 100L);
+        Assert.IsTrue(ax.P0InRange(0L));
+        Assert.IsFalse(ax.P0InRange(1L));
+        Assert.IsFalse(ax.P0InRange(-1L));
+    }
+
+    // ── Conversions ─────────────────────────────────────────────────────────
 
     [TestMethod]
     public void ToUnits_ConvertsTicksToDouble()
@@ -218,5 +257,17 @@ public class AxisTests
         var neg = pos.WithChirality(Chirality.Negative);
         Assert.AreEqual(+1, pos.ChiralitySign);
         Assert.AreEqual(-1, neg.ChiralitySign);
+    }
+
+    [TestMethod]
+    public void WithChirality_PreservesProportions()
+    {
+        // Flipping chirality should not change the stored proportions.
+        var ax  = Axis.Signed(10.0, 100L);
+        var neg = ax.WithChirality(Chirality.Negative);
+        Assert.AreEqual(ax.RealProportion.P0, neg.RealProportion.P0);
+        Assert.AreEqual(ax.RealProportion.P1, neg.RealProportion.P1);
+        Assert.AreEqual(ax.ImagProportion.P0, neg.ImagProportion.P0);
+        Assert.AreEqual(ax.ImagProportion.P1, neg.ImagProportion.P1);
     }
 }

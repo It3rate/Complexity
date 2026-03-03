@@ -1,4 +1,4 @@
-namespace Spaces.Core;
+﻿namespace Spaces.Core;
 
 /// <summary>
 /// Root coordinate context: a set of axes, a multiplication algebra, and a
@@ -15,10 +15,10 @@ namespace Spaces.Core;
 /// ── VALUE MAGNITUDE CONVENTION ──────────────────────────────────────────────
 ///
 /// SpaceValues created via <see cref="Value"/> or <see cref="CreateValue"/> store
-/// NON-NEGATIVE MAGNITUDES in their Focal components:
+/// NON-NEGATIVE MAGNITUDES in their Proportion components:
 ///
-///   Lo (i-component) = absolute distance in the LEFT direction  (≥ 0)
-///   Hi (r-component) = absolute distance in the RIGHT direction (≥ 0)
+///   P0 (i-component) = absolute distance in the LEFT direction  (≥ 0)
+///   P1 (r-component) = absolute distance in the RIGHT direction (≥ 0)
 ///
 /// Both factory methods apply Math.Abs() to all user inputs before converting to
 /// ticks, so passing -5.0 and +5.0 for lo are equivalent — both store 500 ticks
@@ -30,9 +30,9 @@ namespace Spaces.Core;
 /// ── COMPONENT INDEXING ──────────────────────────────────────────────────────
 ///
 /// Algebra entries operate on "flat component" indices:
-///   For axis k:  lo-component = 2k,   hi-component = 2k+1
+///   For axis k:  p0-component = 2k,   p1-component = 2k+1
 ///
-/// This means for a two-axis space: 0=axis0.lo, 1=axis0.hi, 2=axis1.lo, 3=axis1.hi.
+/// This means for a two-axis space: 0=axis0.p0, 1=axis0.p1, 2=axis1.p0, 3=axis1.p1.
 /// See <see cref="AlgebraEntry"/> for full details of the algebra table.
 ///
 /// ── MULTIPLICATION NORMALISATION ────────────────────────────────────────────
@@ -126,15 +126,15 @@ public sealed class Space : IValueSpace
                 $"Expected {expected} values ({Axes.Count} axis × 2), got {units.Length}.",
                 nameof(units));
 
-        var focals = new Focal[Axes.Count];
+        var proportions = new Proportion[Axes.Count];
         for (int a = 0; a < Axes.Count; a++)
         {
             // Both lo and hi are stored as non-negative magnitudes.
             long lo = Math.Abs(Axes[a].ToTicks(units[a * 2]));
             long hi = Math.Abs(Axes[a].ToTicks(units[a * 2 + 1]));
-            focals[a] = new Focal(lo, hi);
+            proportions[a] = new Proportion(lo, hi);
         }
-        return new SpaceValue(this, focals);
+        return new SpaceValue(this, proportions);
     }
 
     // ── IValueSpace implementation ────────────────────────────────────────────
@@ -180,8 +180,8 @@ public sealed class Space : IValueSpace
     /// One-dimensional segment space with complex (i²=−1) multiplication.
     ///
     /// Uses <see cref="Axis.Signed"/>, which enforces:
-    ///   Unit.Lo = 0 (Fixed) — no imaginary unit; real axis only
-    ///   Unit.Hi = ticksPerUnit
+    ///   Unit.P0 = 0 (Fixed) — no imaginary unit; real axis only
+    ///   Unit.P1 = ticksPerUnit
     ///
     /// Algebra (implements complex number multiplication):
     ///   r×r → +r    (1,1,1,+1)
@@ -189,7 +189,7 @@ public sealed class Space : IValueSpace
     ///   r×i → +i    (1,0,0,+1)
     ///   i×r → +i    (0,1,0,+1)
     ///
-    /// For value Focals with lo=imaginary magnitude, hi=real magnitude:
+    /// For value Proportions with lo=imaginary magnitude, hi=real magnitude:
     ///   A=(a_i, a_r), B=(b_i, b_r):
     ///     result_r = a_r·b_r − a_i·b_i
     ///     result_i = a_r·b_i + a_i·b_r
@@ -241,3 +241,4 @@ public sealed class Space : IValueSpace
     public override string ToString() =>
         $"Space({(Name.Length > 0 ? Name : "?")}, {Axes.Count}D, {Algebra.Count} entries)";
 }
+

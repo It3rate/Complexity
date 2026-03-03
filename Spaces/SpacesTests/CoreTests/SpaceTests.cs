@@ -1,4 +1,4 @@
-namespace Spaces.Tests.CoreTests;
+﻿namespace Spaces.Tests.CoreTests;
 
 /// <summary>
 /// Tests for Space: structure, value creation, IValueSpace implementation.
@@ -77,8 +77,8 @@ public class SpaceTests
         // Both lo and hi are abs'd; -2.0 → 200, +4.0 → 400
         var s = Space.Segment(10.0, 100L);
         var v = s.Value(-2.0, 4.0);
-        Assert.AreEqual(200L, v.GetLo(0));   // abs(-2) × 100 = 200
-        Assert.AreEqual(400L, v.GetHi(0));
+        Assert.AreEqual(200L, v.GetP0(0));   // abs(-2) × 100 = 200
+        Assert.AreEqual(400L, v.GetP1(0));
     }
 
     [TestMethod]
@@ -86,8 +86,8 @@ public class SpaceTests
     {
         // -5.0 and +5.0 for lo both produce 500 ticks
         var s = Space.Segment(10.0, 100L);
-        Assert.AreEqual(500L, s.Value(-5.0, 0.0).GetLo(0));
-        Assert.AreEqual(500L, s.Value(5.0,  0.0).GetLo(0));
+        Assert.AreEqual(500L, s.Value(-5.0, 0.0).GetP0(0));
+        Assert.AreEqual(500L, s.Value(5.0,  0.0).GetP0(0));
     }
 
     [TestMethod]
@@ -105,10 +105,10 @@ public class SpaceTests
         var g   = Space.Grid(xAx, yAx);
         var v   = g.Value(-1.0, 2.0, -3.0, 4.0);
 
-        Assert.AreEqual(100L, v.GetLo(0));   // abs(-1) × 100
-        Assert.AreEqual(200L, v.GetHi(0));
-        Assert.AreEqual(300L, v.GetLo(1));   // abs(-3) × 100
-        Assert.AreEqual(400L, v.GetHi(1));
+        Assert.AreEqual(100L, v.GetP0(0));   // abs(-1) × 100
+        Assert.AreEqual(200L, v.GetP1(0));
+        Assert.AreEqual(300L, v.GetP0(1));   // abs(-3) × 100
+        Assert.AreEqual(400L, v.GetP1(1));
     }
 
     // ── IValueSpace — value management ─────────────────────────────────────
@@ -199,3 +199,4 @@ public class SpaceTests
         Assert.IsTrue(Space.IsHi(3));
     }
 }
+
