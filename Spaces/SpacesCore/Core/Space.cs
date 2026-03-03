@@ -1,18 +1,31 @@
 namespace Spaces.Core;
 
 /// <summary>
-/// A container for values: defined by a set of axes and a multiplication algebra.
+/// Root coordinate context: a set of axes, a multiplication algebra, and a
+/// collection of registered <see cref="SpaceValue"/> objects.
 ///
 /// ── WHAT A SPACE IS ─────────────────────────────────────────────────────────
 ///
-/// A Space holds the rules and bounds within which <see cref="SpaceValue"/>
-/// objects exist.  Every value in the space has one <see cref="Focal"/> per
-/// axis — the Focal's Lo is the i-component and Hi is the r-component for
-/// that axis direction.
+/// A Space is the top-level <see cref="IValueSpace"/>.  It has NO parent — it
+/// defines the absolute coordinate frame.  All SpaceValues created from this
+/// Space express their measurements in terms of this Space's axes.
 ///
-/// A Space can be 1D (one axis, e.g. a segment), 2D (two axes, e.g. a grid),
-/// or higher.  Spaces can also be built from other spaces (recursion), but
-/// in this foundational layer we build directly from axes.
+/// A Space can be 1D (Segment), 2D (Grid), or higher.
+///
+/// ── VALUE MAGNITUDE CONVENTION ──────────────────────────────────────────────
+///
+/// SpaceValues created via <see cref="Value"/> or <see cref="CreateValue"/> store
+/// NON-NEGATIVE MAGNITUDES in their Focal components:
+///
+///   Lo (i-component) = absolute distance in the LEFT direction  (≥ 0)
+///   Hi (r-component) = absolute distance in the RIGHT direction (≥ 0)
+///
+/// Both factory methods apply Math.Abs() to all user inputs before converting to
+/// ticks, so passing -5.0 and +5.0 for lo are equivalent — both store 500 ticks
+/// (assuming tpu=100).
+///
+/// Arithmetic results (from SpaceValue operators) are NOT abs'd; they may be
+/// negative, representing tension or out-of-range extents.
 ///
 /// ── COMPONENT INDEXING ──────────────────────────────────────────────────────
 ///
@@ -28,21 +41,28 @@ namespace Spaces.Core;
 /// the result in the same unit system as the inputs.  All axes are assumed to
 /// share the same resolution in this version; BasisTicks is taken from Axes[0].
 ///
+/// ── VALUE MANAGEMENT ────────────────────────────────────────────────────────
+///
+/// Space implements <see cref="IValueSpace"/>.  Two paths for creating values:
+///
+///   Value(units)        — PURE factory.  Creates a SpaceValue but does NOT add
+///                         it to the Values list.  Use for arithmetic temporaries
+///                         and values you do not want tracked.
+///
+///   CreateValue(units)  — REGISTERING factory.  Creates the value AND adds it
+///                         to the Values list.  Use when you want the space to
+///                         own and enumerate the value.
+///
+///   AddValue(value)     — Registers an existing SpaceValue (created via Value())
+///                         into the Values list.  The value must belong to this
+///                         Space (by reference equality of the Space property).
+///
 /// ── FACTORY METHODS ─────────────────────────────────────────────────────────
 ///
 ///   Space.Segment(range, tpu)   — 1 axis; complex i²=−1 multiplication
 ///   Space.Grid(xAxis, yAxis)    — 2 independent axes; complex mult per axis
-///
-/// ── BUILDING VALUES ──────────────────────────────────────────────────────────
-///
-///   var s = Space.Segment(10.0, 100);
-///   var v = s.Value(-2.0, 4.0);   // segment [−2, +4] in units
-///
-///   For multi-axis spaces supply pairs in axis order:
-///   var g = Space.Grid(xAxis, yAxis);
-///   var p = g.Value(x_lo, x_hi, y_lo, y_hi);
 /// </summary>
-public sealed class Space
+public sealed class Space : IValueSpace
 {
     /// <summary>The axes defining the dimensions of this space.</summary>
     public IReadOnlyList<Axis> Axes { get; }
@@ -62,6 +82,16 @@ public sealed class Space
     /// <summary>Total number of flat components (2 per axis).</summary>
     public int ComponentCount => Axes.Count * 2;
 
+    // ── Value registry ────────────────────────────────────────────────────────
+    private readonly List<SpaceValue> _values = new();
+
+    /// <summary>
+    /// All SpaceValues registered with this Space, in registration order.
+    /// Values created via <see cref="Value"/> (pure factory) do NOT appear here
+    /// unless explicitly passed to <see cref="AddValue"/>.
+    /// </summary>
+    public IReadOnlyList<SpaceValue> Values => _values;
+
     public Space(IReadOnlyList<Axis> axes,
                  IReadOnlyList<AlgebraEntry> algebra,
                  string name = "")
@@ -73,12 +103,17 @@ public sealed class Space
         Name    = name;
     }
 
-    // ── Value factory ─────────────────────────────────────────────────────────
+    // ── Pure value factory ────────────────────────────────────────────────────
 
     /// <summary>
     /// Create a <see cref="SpaceValue"/> from a flat list of doubles in unit space.
     /// Supply lo/hi pairs in axis order:  axis0_lo, axis0_hi, axis1_lo, axis1_hi, …
-    /// Each double is converted to ticks via <see cref="Axis.ToTicks"/>.
+    ///
+    /// Both lo and hi are treated as MAGNITUDES: Math.Abs() is applied before
+    /// converting to ticks.  Passing −5.0 for lo is equivalent to +5.0.
+    ///
+    /// This is a PURE factory — the created value is NOT added to <see cref="Values"/>.
+    /// Use <see cref="CreateValue"/> to create-and-register.
     /// </summary>
     /// <param name="units">
     ///   Flat array of doubles.  Must have exactly <c>Axes.Count × 2</c> elements.
@@ -94,11 +129,41 @@ public sealed class Space
         var focals = new Focal[Axes.Count];
         for (int a = 0; a < Axes.Count; a++)
         {
-            long lo = Axes[a].ToTicks(units[a * 2]);
-            long hi = Axes[a].ToTicks(units[a * 2 + 1]);
+            // Both lo and hi are stored as non-negative magnitudes.
+            long lo = Math.Abs(Axes[a].ToTicks(units[a * 2]));
+            long hi = Math.Abs(Axes[a].ToTicks(units[a * 2 + 1]));
             focals[a] = new Focal(lo, hi);
         }
         return new SpaceValue(this, focals);
+    }
+
+    // ── IValueSpace implementation ────────────────────────────────────────────
+
+    /// <summary>
+    /// Create a <see cref="SpaceValue"/> and register it in <see cref="Values"/>.
+    /// Identical to <see cref="Value"/> in how it converts inputs to magnitudes,
+    /// but additionally appends the result to the tracked Values list.
+    /// </summary>
+    public SpaceValue CreateValue(params double[] units)
+    {
+        var v = Value(units);
+        _values.Add(v);
+        return v;
+    }
+
+    /// <summary>
+    /// Register an externally-created <see cref="SpaceValue"/> in <see cref="Values"/>.
+    /// The value must have been created from this Space instance.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown if <paramref name="value"/> belongs to a different Space.
+    /// </exception>
+    public void AddValue(SpaceValue value)
+    {
+        if (!ReferenceEquals(value.Space, this))
+            throw new InvalidOperationException(
+                "Cannot add a value that belongs to a different Space instance.");
+        _values.Add(value);
     }
 
     // ── Static component helpers ──────────────────────────────────────────────
@@ -114,20 +179,23 @@ public sealed class Space
     /// <summary>
     /// One-dimensional segment space with complex (i²=−1) multiplication.
     ///
-    /// Component layout: 0=lo (i-component), 1=hi (r-component).
+    /// Uses <see cref="Axis.Signed"/>, which enforces:
+    ///   Unit.Lo = 0 (Fixed) — no imaginary unit; real axis only
+    ///   Unit.Hi = ticksPerUnit
     ///
     /// Algebra (implements complex number multiplication):
     ///   r×r → +r    (1,1,1,+1)
-    ///   i×i → −r    (0,0,1,−1)   ← this is the i²=−1 entry
+    ///   i×i → −r    (0,0,1,−1)   ← i²=−1 entry
     ///   r×i → +i    (1,0,0,+1)
     ///   i×r → +i    (0,1,0,+1)
     ///
-    /// This makes multiplication of two segments A=(a_i,a_r) and B=(b_i,b_r):
-    ///   result_r = a_r·b_r − a_i·b_i
-    ///   result_i = a_r·b_i + a_i·b_r
-    /// (identical to complex number multiplication).
+    /// For value Focals with lo=imaginary magnitude, hi=real magnitude:
+    ///   A=(a_i, a_r), B=(b_i, b_r):
+    ///     result_r = a_r·b_r − a_i·b_i
+    ///     result_i = a_r·b_i + a_i·b_r
+    /// (identical to complex number multiplication)
     /// </summary>
-    /// <param name="rangeMax">Maximum extent in units (axis spans [−rangeMax, +rangeMax]).</param>
+    /// <param name="rangeMax">Maximum extent in units (axis spans ±rangeMax).</param>
     /// <param name="ticksPerUnit">Resolution.</param>
     /// <param name="name">Optional label.</param>
     public static Space Segment(double rangeMax, long ticksPerUnit, string name = "segment")

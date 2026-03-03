@@ -1,24 +1,59 @@
 namespace Spaces.Core;
 
 /// <summary>
-/// The fundamental two-long primitive: a (lo, hi) directed interval.
+/// The fundamental two-long primitive: a (lo, hi) directed pair of magnitudes.
 ///
 /// ── WHAT A FOCAL IS ─────────────────────────────────────────────────────────
 ///
-/// A Focal stores two signed longs representing the endpoints of a directed
-/// interval.  Within an <see cref="Axis"/> these map to:
+/// A Focal stores two longs representing the Lo (imaginary / left-pointing)
+/// and Hi (real / right-pointing) components of a value or a unit of measure.
 ///
-///   Lo — the "imaginary" (i) component, pointing in the left/negative direction
-///   Hi — the "real"      (r) component, pointing in the right/positive direction
+/// ── VALUE ENCODING (for SpaceValues) ────────────────────────────────────────
 ///
-/// The complex-number encoding of a segment [a, b] on a number line is:
-///   Focal(lo = a, hi = b)
-///   expressed in i-notation as "(−a)·i + b"  (where −a is positive when a &lt; 0)
+/// When used as a value Focal inside a <see cref="Spaces.Core.SpaceValue"/>,
+/// both Lo and Hi store NON-NEGATIVE MAGNITUDES:
 ///
-///   Examples (using unit = 1 for clarity):
-///     Point 5         →  Focal(0, 5)   = "0i + 5"
-///     Segment [−2,+4] →  Focal(−2, 4)  = "2i + 4"
-///     Segment [3, 7]  →  Focal(3, 7)   = "−3i + 7"  (starts in positive territory)
+///   Lo  —  magnitude in the LEFT / imaginary (i) direction  ≥ 0
+///   Hi  —  magnitude in the RIGHT / real (r) direction      ≥ 0
+///
+/// The sign / direction is NOT stored here; it is determined by the axis
+/// chirality.  Given a Focal(lo, hi) and an axis chirality:
+///
+///   Chirality.Positive → number-line position: [−lo/tpu, +hi/tpu]
+///                         display: "{lo/tpu}i + {hi/tpu}"
+///                         Example: Focal(500, 600) @ tpu=100 → [−5, +6], "5i + 6"
+///
+///   Chirality.Negative → number-line position: [+lo/tpu, −hi/tpu]
+///                         display: "(−{lo/tpu}i − {hi/tpu})"
+///                         Example: Focal(500, 600) @ tpu=100 → [+5, −6], "(−5i − 6)"
+///
+///   Key insight: in both chiralities the Lo magnitude is always "positive left"
+///   in its own local context.  The AXIS provides the chirality; the Focal just
+///   stores unsigned distances in each direction.
+///
+/// ── UNIT ENCODING (for Axis.Unit) ───────────────────────────────────────────
+///
+/// When used as a unit Focal inside an <see cref="Axis"/>:
+///
+///   Axis.Signed / Axis.Positive (real number axes):
+///     Unit = ZeroImag(tpu) → Lo = 0 (Fixed), Hi = tpu
+///     Lo = 0  means "there is no imaginary unit on this axis"
+///     Hi = tpu means "one real unit = tpu ticks"
+///     This prevents imaginary (left-pointing) components from accidentally
+///     accumulating on a purely real axis during algebra.
+///
+///   Complex axes (future / custom):
+///     Unit = SymmetricUnit(tpu) → Lo = tpu (EqualOther), Hi = tpu
+///     Both the i-unit and r-unit have the same positive magnitude.
+///     Note: BOTH magnitudes are positive; NegateOther is no longer used for units.
+///
+/// ── ARITHMETIC INVARIANT ────────────────────────────────────────────────────
+///
+/// Arithmetic operators on SpaceValue (+ − * negate) work on raw long values
+/// and do NOT enforce the non-negative convention.  After arithmetic, components
+/// may be negative — this represents "tension" (the measurement has gone past
+/// zero in the opposite direction).  Only VALUE CREATION via Space.Value() /
+/// Space.CreateValue() enforces abs() on user inputs.
 ///
 /// ── LOCKING ─────────────────────────────────────────────────────────────────
 ///
@@ -39,15 +74,19 @@ namespace Spaces.Core;
 ///
 /// ── COMMON PATTERNS ─────────────────────────────────────────────────────────
 ///
-///   Symmetric unit (lo = −hi always):
-///     Focal.SymmetricUnit(100) → _lo=−100, _hi=100, loLock=NegateOther
-///     Lo always reads −_hi, so changing Hi keeps Lo=−Hi at no extra cost.
+///   Real unit (Axis.Signed / Axis.Positive):
+///     Focal.ZeroImag(100) → Lo = 0 (Fixed), Hi = 100
+///     No imaginary unit; purely real axis.
 ///
-///   Purely-real value (imaginary part pinned to zero):
-///     Focal.ZeroImag(5) → lo=0 (Fixed), hi=5 (free)
+///   Symmetric unit (complex axes):
+///     Focal.SymmetricUnit(100) → Lo = 100 (EqualOther), Hi = 100
+///     Both directions have equal unit magnitude; Lo always tracks Hi.
 ///
-///   Degenerate point (both ends locked):
-///     Focal.FixedPoint(7) → lo=7 (Fixed), hi=7 (Fixed)
+///   Purely-real value (no left extent):
+///     Focal.ZeroImag(5) → Lo = 0 (Fixed), Hi = 5
+///
+///   Degenerate point (locked at a single value):
+///     Focal.FixedPoint(7) → Lo = 7 (Fixed), Hi = 7 (Fixed)
 ///
 /// ── IMMUTABILITY ────────────────────────────────────────────────────────────
 ///
@@ -127,7 +166,7 @@ public sealed class Focal
     /// <summary>
     /// Return a new Focal with Hi set to <paramref name="newHi"/>.
     /// If HiLock is Fixed, returns this instance unchanged.
-    /// Note: if LoLock is NegateOther, Lo's effective value will track the new Hi.
+    /// Note: if LoLock is EqualOther, Lo's effective value will track the new Hi.
     /// </summary>
     public Focal WithHi(long newHi) =>
         HiLock == EndLock.Fixed
@@ -147,20 +186,30 @@ public sealed class Focal
     // ── Static factory helpers ────────────────────────────────────────────────
 
     /// <summary>
-    /// A symmetric unit Focal where Lo is always locked to −Hi.
-    /// Changing Hi on the returned Focal (via WithHi) keeps Lo = −Hi automatically.
-    /// Canonical use: the Unit Focal of a standard symmetric Axis.
+    /// A symmetric unit Focal where Lo always equals Hi (both positive magnitudes).
+    /// Lo is locked via EqualOther so that changing Hi (via WithHi) automatically
+    /// keeps Lo = Hi.
+    ///
+    /// Use for COMPLEX axes where both the i-unit and r-unit have the same size.
+    /// For REAL (non-complex) axes, use <see cref="ZeroImag"/> instead.
     /// </summary>
     /// <param name="ticksPerUnit">
-    ///   The positive unit magnitude.  Stored as _hi; _lo is set to −ticksPerUnit
-    ///   (preserved but overridden by the NegateOther lock).
+    ///   The positive unit magnitude in both directions.
+    ///   Stored as both _lo and _hi; Lo reads _hi via EqualOther.
     /// </param>
     public static Focal SymmetricUnit(long ticksPerUnit) =>
-        new Focal(-ticksPerUnit, ticksPerUnit, EndLock.NegateOther, EndLock.None);
+        new Focal(ticksPerUnit, ticksPerUnit, EndLock.EqualOther, EndLock.None);
 
     /// <summary>
     /// A Focal with Lo Fixed at zero, Hi free.
-    /// Use to enforce a purely-real value (no i/imaginary component).
+    ///
+    /// Two uses:
+    ///   1. As a Unit Focal for <see cref="Axis.Signed"/> / <see cref="Axis.Positive"/>:
+    ///      Lo = 0 (Fixed) means "no imaginary unit on this axis", preventing
+    ///      imaginary components from entering calculations on a purely real axis.
+    ///
+    ///   2. As a value Focal representing a purely right-pointing quantity
+    ///      (no left / imaginary extent).
     /// </summary>
     public static Focal ZeroImag(long hiValue) =>
         new Focal(0L, hiValue, EndLock.Fixed, EndLock.None);
