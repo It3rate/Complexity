@@ -21,7 +21,9 @@
       "Bash(cmd.exe /c \"dir C:\\\\Users\\\\Robin\\\\source\\\\repos /b 2>&1\")",
       "Bash(cmd.exe /c \"where /r C:\\\\Users\\\\Robin Spaces.sln 2>&1\")",
       "Bash(cmd.exe /c \"dir C:\\\\Users\\\\Robin\\\\source\\\\repos\\\\Complexity\\\\Spaces /s /b 2>&1\")",
-      "Bash(powershell -Command \":*)"
+      "Bash(powershell -Command \":*)",
+      "Bash(ls -la /c/Users/Robin/source/repos/Complexity/*.sln)",
+      "Bash(powershell -Command \"[System.Guid]::NewGuid\\(\\).ToString\\(''B''\\).ToUpper\\(\\); [System.Guid]::NewGuid\\(\\).ToString\\(''B''\\).ToUpper\\(\\)\")"
     ]
   }
 }

@@ -569,19 +569,17 @@ public class FrameTests
     // ================================================================
 
     [TestMethod]
-    [ExpectedException(typeof(ArgumentException))]
     public void CreateValue_WrongDimCount_Throws()
     {
         var frame = CSpace.FromAxis(Axis.Forward("value", 100));
-        frame.CreateValue(1.0, 2.0); // 1D frame but 2 components
+        Assert.ThrowsExactly<ArgumentException>(() => frame.CreateValue(1.0, 2.0)); // 1D frame but 2 components
     }
 
     [TestMethod]
-    [ExpectedException(typeof(ArgumentException))]
     public void CreateValueFromTicks_WrongDimCount_Throws()
     {
         var frame = CSpace.FromAxis(Axis.Forward("value", 100));
-        frame.CreateValueFromTicks(1, 2); // 1D frame but 2 components
+        Assert.ThrowsExactly<ArgumentException>(() => frame.CreateValueFromTicks(1, 2)); // 1D frame but 2 components
     }
 
     [TestMethod]

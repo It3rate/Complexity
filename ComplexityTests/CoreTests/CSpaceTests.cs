@@ -166,11 +166,10 @@ public class CSpaceTests
     }
 
     [TestMethod]
-    [ExpectedException(typeof(ArgumentException))]
     public void ValueFactoryWrongDimsThrows()
     {
         var space = CSpace.Segment();
-        space.Value(1.0, 2.0, 3.0);
+        Assert.ThrowsExactly<ArgumentException>(() => space.Value(1.0, 2.0, 3.0));
     }
 
     [TestMethod]

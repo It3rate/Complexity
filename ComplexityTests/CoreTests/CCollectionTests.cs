@@ -74,11 +74,10 @@ public class CCollectionTests
     }
 
     [TestMethod]
-    [ExpectedException(typeof(InvalidOperationException))]
     public void EmptyCollection_SpaceThrows()
     {
         var col = new CCollection(Array.Empty<CValue>());
-        _ = col.Space;
+        Assert.ThrowsExactly<InvalidOperationException>(() => _ = col.Space);
     }
 
     // ================================================================
@@ -314,7 +313,6 @@ public class CCollectionTests
     // ================================================================
 
     [TestMethod]
-    [ExpectedException(typeof(InvalidOperationException))]
     public void ModeEnforcement_TrajectoryOp_OnEnsemble_Throws()
     {
         // Deltas() requires Trajectory or Unspecified — Ensemble should throw
@@ -324,11 +322,10 @@ public class CCollectionTests
             _grid.Value(1.0, 1.0),
         }, SampleMode.Ensemble);
 
-        _ = col.Deltas();
+        Assert.ThrowsExactly<InvalidOperationException>(() => _ = col.Deltas());
     }
 
     [TestMethod]
-    [ExpectedException(typeof(InvalidOperationException))]
     public void ModeEnforcement_EnsembleOp_OnTrajectory_Throws()
     {
         // Spread() requires Ensemble or Unspecified — Trajectory should throw
@@ -338,7 +335,7 @@ public class CCollectionTests
             _grid.Value(1.0, 1.0),
         }, SampleMode.Trajectory);
 
-        _ = col.Spread();
+        Assert.ThrowsExactly<InvalidOperationException>(() => _ = col.Spread());
     }
 
     [TestMethod]

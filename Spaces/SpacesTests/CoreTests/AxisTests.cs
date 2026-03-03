@@ -1,3 +1,5 @@
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+
 namespace Spaces.Tests.CoreTests;
 
 /// <summary>

@@ -191,7 +191,7 @@ public class CSubSpaceTests
         var root = CSpace.Segment(-100, 100);
         var val = root.Value(3, 5);
 
-        Assert.ThrowsException<InvalidOperationException>(() => root.TransformToParent(val));
+        Assert.ThrowsExactly<InvalidOperationException>(() => root.TransformToParent(val));
     }
 
     [TestMethod]
