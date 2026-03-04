@@ -5,8 +5,8 @@ using System.Text;
 namespace ResoEngine.Support;
 
 
-public readonly record struct AlgebraEntry(int LeftIdx, int RightIdx, int ResultIdx, int Sign)
+public readonly record struct AlgebraEntry(int LeftIndex, int RightIndex, int ResultIndex, int Sign) // probably dont need sign as that is chirality.
 {
     public override string ToString() =>
-        $"c[{LeftIdx}] × c[{RightIdx}] → {(Sign >= 0 ? "+" : "−")}c[{ResultIdx}]";
+        $"c[{LeftIndex}] × c[{RightIndex}] → {(Sign >= 0 ? "+" : "−")}c[{ResultIndex}]";
 }

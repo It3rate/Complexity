@@ -1,7 +1,7 @@
 using ResoEngine.Support;
 
 namespace ResoEngine;
-public sealed class Proportion : IProportion, IValue
+public sealed class Proportion : IProportion, ISpace, IValue // ca not be a subspace because it is the lowest level.
 {
     private long _top;
     private long _bot;
@@ -29,6 +29,11 @@ public sealed class Proportion : IProportion, IValue
     public long RawTop => _top;
     public long RawBot => _bot;
 
+
+    public AlgebraEntry[] Algebra => throw new NotImplementedException();
+
+    public IValue[] ChildValues => throw new NotImplementedException();
+
     public void ForceChirality(Chirality newChirality)
     {
         if (_chirality != newChirality)
@@ -39,7 +44,7 @@ public sealed class Proportion : IProportion, IValue
         }
     }
 
-    public long GetValueByPerspective(Chirality perspective) => perspective.IsPositive() ? GetNumerator() : GetDenominator();
+    public long GetTicksByPerspective(Chirality perspective) => perspective.IsPositive() ? GetNumerator() : GetDenominator();
 
     public long GetNumerator() => GetTick(_chirality);
     public long GetDenominator() => GetTick(_chirality.Invert());

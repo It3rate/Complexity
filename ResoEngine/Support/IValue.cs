@@ -6,6 +6,6 @@ namespace ResoEngine.Support;
 
 public interface IValue
 {
-    long GetValueByPerspective(Chirality perspective);
+    long GetTicksByPerspective(Chirality perspective);
     double[] GetValues();
 }

@@ -2,9 +2,14 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace ResoEngine.Support
+namespace ResoEngine.Support;
+
+public interface ISpace
 {
-    internal interface ISpace
-    {
-    }
+    AlgebraEntry[] Algebra { get; }
+    IValue[] ChildValues { get; }
+}
+public interface ISubSpace : ISpace
+{
+    ISpace[] FrameElements { get; }
 }
